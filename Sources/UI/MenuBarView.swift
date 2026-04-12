@@ -6,47 +6,69 @@ struct MenuBarView: View {
     @ObservedObject var overlayController: OverlayWindowController
     var settingsController: SettingsWindowController?
 
+    private var showScores: Bool {
+        settings.displayMode == "scores" || settings.displayMode == "both"
+    }
+
+    private var showRPG: Bool {
+        settings.displayMode == "rpg" || settings.displayMode == "both"
+    }
+
     var body: some View {
         VStack(spacing: 12) {
-            Text("HIGH SCORE")
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
-
-            // Seven segment preview of the score
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.black.opacity(0.8))
-
-                VStack(spacing: 4) {
-                    SevenSegmentScore(score: scoreManager.displayScore, color: .green)
-                        .frame(height: 36)
-
-                    HStack(spacing: 16) {
-                        HStack(spacing: 4) {
-                            Text("T")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.cyan.opacity(0.6))
-                            SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
-                        }
-                        HStack(spacing: 4) {
-                            Text("W")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.orange.opacity(0.6))
-                            SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
-                        }
-                    }
-                    .frame(height: 22)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+            // Header with display mode toggle
+            HStack {
+                Spacer()
+                Text("HIGH SCORE")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
-            .frame(height: 76)
+            .overlay(alignment: .trailing) {
+                DisplayModeToggle(displayMode: $settings.displayMode)
+            }
 
-            ScoreSegmentView(
-                label: "All Sources",
-                score: scoreManager.combinedScore,
-                icon: "terminal.fill"
-            )
+            if showScores {
+                // Seven segment preview of the score
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.black.opacity(0.8))
+
+                    VStack(spacing: 4) {
+                        SevenSegmentScore(score: scoreManager.displayScore, color: .green)
+                            .frame(height: 36)
+
+                        HStack(spacing: 16) {
+                            HStack(spacing: 4) {
+                                Text("T")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.cyan.opacity(0.6))
+                                SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
+                            }
+                            HStack(spacing: 4) {
+                                Text("W")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.orange.opacity(0.6))
+                                SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
+                            }
+                        }
+                        .frame(height: 22)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                }
+                .frame(height: 76)
+
+                ScoreSegmentView(
+                    label: "All Sources",
+                    score: scoreManager.combinedScore,
+                    icon: "terminal.fill"
+                )
+            }
+
+            if showRPG {
+                RPGSceneView()
+            }
 
             Divider()
 
@@ -86,6 +108,45 @@ struct MenuBarView: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+}
+
+// MARK: - Display Mode Toggle
+
+struct DisplayModeToggle: View {
+    @Binding var displayMode: String
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ModeButton(icon: "number.square", mode: "scores", current: $displayMode, tooltip: "Scores only")
+            ModeButton(icon: "gamecontroller", mode: "rpg", current: $displayMode, tooltip: "RPG only")
+            ModeButton(icon: "square.grid.2x2", mode: "both", current: $displayMode, tooltip: "Both")
+        }
+    }
+}
+
+struct ModeButton: View {
+    let icon: String
+    let mode: String
+    @Binding var current: String
+    let tooltip: String
+
+    var body: some View {
+        Button {
+            current = mode
+            Log.app.info("Display mode changed to \(mode, privacy: .public)")
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .frame(width: 20, height: 20)
+                .foregroundStyle(current == mode ? .white : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(current == mode ? .blue.opacity(0.6) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(tooltip)
     }
 }
 

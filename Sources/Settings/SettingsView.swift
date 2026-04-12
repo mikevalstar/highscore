@@ -148,6 +148,53 @@ struct OverlaySettingsTab: View {
                     .padding(8)
                 }
 
+                GroupBox("Panels") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Score panel
+                        HStack {
+                            Toggle(isOn: $settings.overlayShowScores) {
+                                Text("Score panel")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
+                        }
+
+                        HStack {
+                            Text("Opacity")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 80, alignment: .leading)
+                            Slider(value: $settings.overlayScoreOpacity, in: 0.1...1.0, step: 0.05)
+                                .disabled(!settings.overlayShowScores)
+                            Text("\(Int(settings.overlayScoreOpacity * 100))%")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        .opacity(settings.overlayShowScores ? 1 : 0.4)
+
+                        Divider()
+
+                        // RPG panel
+                        HStack {
+                            Toggle(isOn: $settings.overlayShowRPG) {
+                                Text("RPG panel")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
+                        }
+
+                        HStack {
+                            Text("Opacity")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 80, alignment: .leading)
+                            Slider(value: $settings.overlayRPGOpacity, in: 0.1...1.0, step: 0.05)
+                                .disabled(!settings.overlayShowRPG)
+                            Text("\(Int(settings.overlayRPGOpacity * 100))%")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        .opacity(settings.overlayShowRPG ? 1 : 0.4)
+                    }
+                    .padding(8)
+                }
+
                 GroupBox("Position") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Pin corner")
@@ -187,24 +234,14 @@ struct OverlaySettingsTab: View {
                     .padding(8)
                 }
 
-                GroupBox("Opacity") {
+                GroupBox("Background") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("Background")
+                            Text("Opacity")
                                 .font(.system(size: 11, design: .monospaced))
                                 .frame(width: 80, alignment: .leading)
                             Slider(value: $settings.overlayBackgroundOpacity, in: 0.0...1.0, step: 0.05)
                             Text("\(Int(settings.overlayBackgroundOpacity * 100))%")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 40, alignment: .trailing)
-                        }
-
-                        HStack {
-                            Text("Display")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 80, alignment: .leading)
-                            Slider(value: $settings.overlayDisplayOpacity, in: 0.1...1.0, step: 0.05)
-                            Text("\(Int(settings.overlayDisplayOpacity * 100))%")
                                 .font(.system(size: 11, design: .monospaced))
                                 .frame(width: 40, alignment: .trailing)
                         }

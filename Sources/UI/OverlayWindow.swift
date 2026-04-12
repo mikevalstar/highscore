@@ -108,8 +108,30 @@ class OverlayWindowController: ObservableObject {
         guard let window, let settings, let screen = NSScreen.main else { return }
 
         let scale = settings.overlayScale
-        let baseWidth: CGFloat = 320
-        let baseHeight: CGFloat = 120
+        let showScores = settings.overlayShowScores
+        let showRPG = settings.overlayShowRPG
+
+        let scoreWidth: CGFloat = 320
+        let rpgWidth: CGFloat = scoreWidth * 2.5  // RPG is 2.5x wider than scores
+        let scoreHeight: CGFloat = 120
+        let rpgHeight: CGFloat = 300
+        let panelGap: CGFloat = 16
+
+        var baseWidth: CGFloat
+        var baseHeight: CGFloat
+
+        if showScores && showRPG {
+            // Side-by-side layout with gap between panels
+            baseWidth = scoreWidth + rpgWidth + panelGap
+            baseHeight = max(scoreHeight, rpgHeight)
+        } else if showRPG {
+            baseWidth = rpgWidth
+            baseHeight = rpgHeight
+        } else {
+            baseWidth = scoreWidth
+            baseHeight = scoreHeight
+        }
+
         let size = CGSize(width: baseWidth * scale, height: baseHeight * scale)
 
         window.setContentSize(size)
@@ -131,11 +153,47 @@ struct OverlayContentView: View {
     @ObservedObject var scoreManager: ScoreManager
     @ObservedObject var settings: AppSettings
 
+    /// RPG goes toward the screen interior (away from the corner the overlay is pinned to).
+    /// Left-pinned positions → RPG on the right. Right-pinned → RPG on the left.
+    private var rpgOnRight: Bool {
+        switch settings.overlayPosition {
+        case .topLeft, .bottomLeft: return true
+        case .topRight, .bottomRight: return false
+        }
+    }
+
     var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            if settings.overlayShowRPG && !rpgOnRight {
+                rpgPanel
+            }
+
+            if settings.overlayShowScores {
+                scorePanel
+            }
+
+            if settings.overlayShowRPG && rpgOnRight {
+                rpgPanel
+            }
+        }
+        .fixedSize()
+        .padding(.horizontal, 12 * settings.overlayScale)
+        .padding(.vertical, 6 * settings.overlayScale)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.black.opacity(settings.overlayBackgroundOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.green.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
+                )
+        )
+    }
+
+    private var scorePanel: some View {
         VStack(spacing: 2) {
             SevenSegmentScore(score: scoreManager.displayScore, color: .green)
                 .frame(maxHeight: .infinity)
-                .opacity(settings.overlayDisplayOpacity)
+                .opacity(settings.overlayScoreOpacity)
 
             HStack(spacing: 12 * settings.overlayScale) {
                 HStack(spacing: 2 * settings.overlayScale) {
@@ -152,22 +210,20 @@ struct OverlayContentView: View {
                 }
             }
             .frame(height: 25 * settings.overlayScale)
-            .opacity(settings.overlayDisplayOpacity)
+            .opacity(settings.overlayScoreOpacity)
 
             Text("HIGH SCORE")
                 .font(.system(size: 8 * settings.overlayScale, weight: .bold, design: .monospaced))
                 .foregroundStyle(.green.opacity(0.6))
-                .opacity(settings.overlayDisplayOpacity)
+                .opacity(settings.overlayScoreOpacity)
         }
-        .padding(.horizontal, 12 * settings.overlayScale)
-        .padding(.vertical, 6 * settings.overlayScale)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.black.opacity(settings.overlayBackgroundOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(.green.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
-                )
-        )
+        .frame(width: 320 * settings.overlayScale, height: 120 * settings.overlayScale)
+    }
+
+    private var rpgPanel: some View {
+        RPGSceneView()
+            .frame(width: 800 * settings.overlayScale, height: 280 * settings.overlayScale)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .opacity(settings.overlayRPGOpacity)
     }
 }
