@@ -13,9 +13,10 @@ struct TokenScore: Sendable {
     var outputTokens: Int = 0
     var cacheReadTokens: Int = 0
     var cacheCreationTokens: Int = 0
+    var reasoningTokens: Int = 0
 
     var total: Int {
-        inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
+        inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens + reasoningTokens
     }
 
     func adding(_ other: TokenScore) -> TokenScore {
@@ -23,7 +24,8 @@ struct TokenScore: Sendable {
             inputTokens: inputTokens + other.inputTokens,
             outputTokens: outputTokens + other.outputTokens,
             cacheReadTokens: cacheReadTokens + other.cacheReadTokens,
-            cacheCreationTokens: cacheCreationTokens + other.cacheCreationTokens
+            cacheCreationTokens: cacheCreationTokens + other.cacheCreationTokens,
+            reasoningTokens: reasoningTokens + other.reasoningTokens
         )
     }
 
@@ -32,7 +34,8 @@ struct TokenScore: Sendable {
             inputTokens: inputTokens - other.inputTokens,
             outputTokens: outputTokens - other.outputTokens,
             cacheReadTokens: cacheReadTokens - other.cacheReadTokens,
-            cacheCreationTokens: cacheCreationTokens - other.cacheCreationTokens
+            cacheCreationTokens: cacheCreationTokens - other.cacheCreationTokens,
+            reasoningTokens: reasoningTokens - other.reasoningTokens
         )
     }
 }
@@ -68,6 +71,7 @@ class ScoreManager: ObservableObject {
     private lazy var readers: [TokenReader] = [
         ClaudeCodeReader(db: db),
         OpenCodeReader(db: db),
+        CodexReader(db: db),
     ]
 
     /// Returns the startDate setting as a Unix timestamp in seconds.

@@ -19,8 +19,9 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 ## Phase 2 - Additional AI Tool Sources
 
 - [x] Plugin/adapter architecture for adding new sources (`TokenReader` protocol)
-- [ ] Codex usage 
+- [x] Codex usage (reads `~/.codex/sessions/` rollout JSONL files with full token breakdown)
 - [x] OpenCode usage (reads `.opencode/opencode.db` SQLite databases per-project)
+- [x] Reasoning token tracking (supported for Codex and OpenCode sources)
 - [ ] Cursor / Copilot usage 
 - [ ] User-configurable custom scan folders for any reader type
 
@@ -62,6 +63,8 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 
 - **Platform**: macOS 14+ (Sonoma), SwiftUI
 - **Build**: Swift Package Manager (`swift build` / `swift run`)
-- **Data source**: Claude Code stores conversations as JSONL in `~/.claude/projects/<project>/<session>.jsonl` — usage data is in `message.usage` with fields: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`
+- **Data source (Claude Code)**: Conversations as JSONL in `~/.claude/projects/<project>/<session>.jsonl` — usage data is in `message.usage` with fields: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`
+- **Data source (Codex)**: Rollout JSONL files in `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — last `token_count` event per file provides `input_tokens`, `output_tokens`, `cached_input_tokens`, `reasoning_output_tokens`
+- **Data source (OpenCode)**: SQLite DB at `~/.local/share/opencode/opencode.db` — token usage in `message.data` JSON: `$.tokens.{input,output,reasoning,cache.read,cache.write}`
 - **Architecture**: `ScoreManager` (ObservableObject) orchestrates readers; each source (Claude Code, etc.) has its own reader struct
 - **No Xcode project**: open `Package.swift` in Xcode if you want the IDE experience

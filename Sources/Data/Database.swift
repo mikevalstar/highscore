@@ -13,7 +13,8 @@ import SQLite3
 ///     input_tokens   INTEGER NOT NULL DEFAULT 0,
 ///     output_tokens  INTEGER NOT NULL DEFAULT 0,
 ///     cache_read     INTEGER NOT NULL DEFAULT 0,
-///     cache_creation INTEGER NOT NULL DEFAULT 0
+///     cache_creation INTEGER NOT NULL DEFAULT 0,
+///     reasoning      INTEGER NOT NULL DEFAULT 0
 ///   )
 ///
 /// Thread safety: all access is serialized through an internal lock.
@@ -65,7 +66,7 @@ final class ScoreDatabase: Sendable {
         defer { lock.unlock() }
         guard let db else { return nil }
 
-        let sql = "SELECT source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores WHERE path = ?"
+        let sql = "SELECT source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation, reasoning FROM file_scores WHERE path = ?"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare get")
@@ -89,7 +90,8 @@ final class ScoreDatabase: Sendable {
                 inputTokens: Int(sqlite3_column_int64(stmt, 4)),
                 outputTokens: Int(sqlite3_column_int64(stmt, 5)),
                 cacheReadTokens: Int(sqlite3_column_int64(stmt, 6)),
-                cacheCreationTokens: Int(sqlite3_column_int64(stmt, 7))
+                cacheCreationTokens: Int(sqlite3_column_int64(stmt, 7)),
+                reasoningTokens: Int(sqlite3_column_int64(stmt, 8))
             )
         )
     }
@@ -101,8 +103,8 @@ final class ScoreDatabase: Sendable {
         guard let db else { return }
 
         let sql = """
-            INSERT INTO file_scores (path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO file_scores (path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation, reasoning)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path) DO UPDATE SET
                 source = excluded.source,
                 file_size = excluded.file_size,
@@ -111,7 +113,8 @@ final class ScoreDatabase: Sendable {
                 input_tokens = excluded.input_tokens,
                 output_tokens = excluded.output_tokens,
                 cache_read = excluded.cache_read,
-                cache_creation = excluded.cache_creation
+                cache_creation = excluded.cache_creation,
+                reasoning = excluded.reasoning
             """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -130,6 +133,7 @@ final class ScoreDatabase: Sendable {
         sqlite3_bind_int64(stmt, 7, Int64(score.outputTokens))
         sqlite3_bind_int64(stmt, 8, Int64(score.cacheReadTokens))
         sqlite3_bind_int64(stmt, 9, Int64(score.cacheCreationTokens))
+        sqlite3_bind_int64(stmt, 10, Int64(score.reasoningTokens))
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             logDBError("step upsert")
@@ -142,7 +146,7 @@ final class ScoreDatabase: Sendable {
         defer { lock.unlock() }
         guard let db else { return [] }
 
-        let sql = "SELECT path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores"
+        let sql = "SELECT path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation, reasoning FROM file_scores"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare allEntries")
@@ -164,7 +168,8 @@ final class ScoreDatabase: Sendable {
                     inputTokens: Int(sqlite3_column_int64(stmt, 5)),
                     outputTokens: Int(sqlite3_column_int64(stmt, 6)),
                     cacheReadTokens: Int(sqlite3_column_int64(stmt, 7)),
-                    cacheCreationTokens: Int(sqlite3_column_int64(stmt, 8))
+                    cacheCreationTokens: Int(sqlite3_column_int64(stmt, 8)),
+                    reasoningTokens: Int(sqlite3_column_int64(stmt, 9))
                 )
             ))
         }
@@ -181,9 +186,9 @@ final class ScoreDatabase: Sendable {
 
         let sql: String
         if source != nil {
-            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ? AND source = ?"
+            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0), COALESCE(SUM(reasoning),0) FROM file_scores WHERE modified_at >= ? AND source = ?"
         } else {
-            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ?"
+            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0), COALESCE(SUM(reasoning),0) FROM file_scores WHERE modified_at >= ?"
         }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -205,7 +210,8 @@ final class ScoreDatabase: Sendable {
             inputTokens: Int(sqlite3_column_int64(stmt, 0)),
             outputTokens: Int(sqlite3_column_int64(stmt, 1)),
             cacheReadTokens: Int(sqlite3_column_int64(stmt, 2)),
-            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3))
+            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3)),
+            reasoningTokens: Int(sqlite3_column_int64(stmt, 4))
         )
     }
 
@@ -231,7 +237,7 @@ final class ScoreDatabase: Sendable {
         defer { lock.unlock() }
         guard let db else { return nil }
 
-        let sql = "SELECT input_tokens, output_tokens, cache_read, cache_creation FROM daily_snapshots WHERE date = ?"
+        let sql = "SELECT input_tokens, output_tokens, cache_read, cache_creation, reasoning FROM daily_snapshots WHERE date = ?"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare getSnapshot")
@@ -249,7 +255,8 @@ final class ScoreDatabase: Sendable {
             inputTokens: Int(sqlite3_column_int64(stmt, 0)),
             outputTokens: Int(sqlite3_column_int64(stmt, 1)),
             cacheReadTokens: Int(sqlite3_column_int64(stmt, 2)),
-            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3))
+            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3)),
+            reasoningTokens: Int(sqlite3_column_int64(stmt, 4))
         )
     }
 
@@ -260,8 +267,8 @@ final class ScoreDatabase: Sendable {
         guard let db else { return }
 
         let sql = """
-            INSERT OR IGNORE INTO daily_snapshots (date, input_tokens, output_tokens, cache_read, cache_creation)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO daily_snapshots (date, input_tokens, output_tokens, cache_read, cache_creation, reasoning)
+            VALUES (?, ?, ?, ?, ?, ?)
             """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -275,6 +282,7 @@ final class ScoreDatabase: Sendable {
         sqlite3_bind_int64(stmt, 3, Int64(score.outputTokens))
         sqlite3_bind_int64(stmt, 4, Int64(score.cacheReadTokens))
         sqlite3_bind_int64(stmt, 5, Int64(score.cacheCreationTokens))
+        sqlite3_bind_int64(stmt, 6, Int64(score.reasoningTokens))
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             logDBError("step saveSnapshot")
@@ -286,7 +294,7 @@ final class ScoreDatabase: Sendable {
     // MARK: - Migration System
 
     /// Current schema version. Bump this and add a case to `runMigration(_:)` for each new migration.
-    private static let currentVersion = 3
+    private static let currentVersion = 4
 
     /// Reads the current DB version from the env table. Returns 0 if the table doesn't exist (fresh or pre-migration DB).
     private func getDBVersion() -> Int {
@@ -393,6 +401,15 @@ final class ScoreDatabase: Sendable {
                     cache_creation INTEGER NOT NULL DEFAULT 0
                 )
                 """)
+
+        // v4: add reasoning token column to file_scores and daily_snapshots
+        case 4:
+            if !isLegacy || !columnExists("file_scores", column: "reasoning") {
+                exec("ALTER TABLE file_scores ADD COLUMN reasoning INTEGER NOT NULL DEFAULT 0")
+            }
+            if !isLegacy || !columnExists("daily_snapshots", column: "reasoning") {
+                exec("ALTER TABLE daily_snapshots ADD COLUMN reasoning INTEGER NOT NULL DEFAULT 0")
+            }
 
         default:
             Log.app.error("Unknown migration version \(version) — skipping")

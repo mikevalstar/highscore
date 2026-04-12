@@ -110,6 +110,7 @@ struct ScoreSegmentView: View {
                 ScoreBar(label: "IN", value: score.inputTokens, color: .blue)
                 ScoreBar(label: "OUT", value: score.outputTokens, color: .green)
                 ScoreBar(label: "CACHE", value: score.cacheReadTokens, color: .orange)
+                ScoreBar(label: "RSN", value: score.reasoningTokens, color: .pink)
             }
             .frame(height: 24)
             .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -120,6 +121,10 @@ struct ScoreSegmentView: View {
                 ScoreLegend(label: "OUT", value: score.outputTokens, color: .green)
                 Spacer()
                 ScoreLegend(label: "CACHE", value: score.cacheReadTokens, color: .orange)
+                if score.reasoningTokens > 0 {
+                    Spacer()
+                    ScoreLegend(label: "RSN", value: score.reasoningTokens, color: .pink)
+                }
             }
             .font(.system(size: 9, weight: .medium, design: .monospaced))
         }

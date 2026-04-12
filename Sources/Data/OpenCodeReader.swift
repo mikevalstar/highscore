@@ -56,7 +56,7 @@ final class OpenCodeReader: TokenReader, Sendable {
             "Scan complete: \(totalSessions) sessions, \(parsedSessions) parsed, \(skippedSessions) cached, \(elapsedStr, privacy: .public)ms elapsed"
         )
         Log.opencode.notice(
-            "Totals — in: \(finalScore.inputTokens), out: \(finalScore.outputTokens), cacheRead: \(finalScore.cacheReadTokens), cacheCreate: \(finalScore.cacheCreationTokens)"
+            "Totals — in: \(finalScore.inputTokens), out: \(finalScore.outputTokens), cacheRead: \(finalScore.cacheReadTokens), cacheCreate: \(finalScore.cacheCreationTokens), reasoning: \(finalScore.reasoningTokens)"
         )
 
         return finalScore
@@ -161,7 +161,7 @@ final class OpenCodeReader: TokenReader, Sendable {
             result.parsed += 1
 
             Log.opencode.debug(
-                "Session \(sessionId, privacy: .public): in=\(newScore.inputTokens), out=\(newScore.outputTokens), cacheRead=\(newScore.cacheReadTokens), cacheWrite=\(newScore.cacheCreationTokens)"
+                "Session \(sessionId, privacy: .public): in=\(newScore.inputTokens), out=\(newScore.outputTokens), cacheRead=\(newScore.cacheReadTokens), cacheWrite=\(newScore.cacheCreationTokens), reasoning=\(newScore.reasoningTokens)"
             )
         }
 
@@ -174,7 +174,8 @@ final class OpenCodeReader: TokenReader, Sendable {
             SELECT COALESCE(SUM(json_extract(data, '$.tokens.input')), 0),
                    COALESCE(SUM(json_extract(data, '$.tokens.output')), 0),
                    COALESCE(SUM(json_extract(data, '$.tokens.cache.read')), 0),
-                   COALESCE(SUM(json_extract(data, '$.tokens.cache.write')), 0)
+                   COALESCE(SUM(json_extract(data, '$.tokens.cache.write')), 0),
+                   COALESCE(SUM(json_extract(data, '$.tokens.reasoning')), 0)
             FROM message
             WHERE session_id = ?
               AND json_extract(data, '$.role') = 'assistant'
@@ -199,7 +200,8 @@ final class OpenCodeReader: TokenReader, Sendable {
             inputTokens: Int(sqlite3_column_int64(stmt, 0)),
             outputTokens: Int(sqlite3_column_int64(stmt, 1)),
             cacheReadTokens: Int(sqlite3_column_int64(stmt, 2)),
-            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3))
+            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3)),
+            reasoningTokens: Int(sqlite3_column_int64(stmt, 4))
         )
     }
 }

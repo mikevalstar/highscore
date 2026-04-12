@@ -291,6 +291,7 @@ struct SourcesSettingsTab: View {
                             StatLabel(label: "OUT", value: scoreManager.combinedScore.outputTokens, color: .green)
                             StatLabel(label: "CACHE R", value: scoreManager.combinedScore.cacheReadTokens, color: .orange)
                             StatLabel(label: "CACHE W", value: scoreManager.combinedScore.cacheCreationTokens, color: .purple)
+                            StatLabel(label: "RSN", value: scoreManager.combinedScore.reasoningTokens, color: .pink)
                         }
                         .font(.system(size: 10, design: .monospaced))
                     }
@@ -326,6 +327,9 @@ struct SourceRow: View {
                     StatLabel(label: "OUT", value: score.outputTokens, color: .green)
                     StatLabel(label: "CACHE R", value: score.cacheReadTokens, color: .orange)
                     StatLabel(label: "CACHE W", value: score.cacheCreationTokens, color: .purple)
+                    if score.reasoningTokens > 0 {
+                        StatLabel(label: "RSN", value: score.reasoningTokens, color: .pink)
+                    }
                 }
                 .font(.system(size: 10, design: .monospaced))
             } else {
@@ -340,6 +344,7 @@ struct SourceRow: View {
         switch name {
         case "Claude Code": return "terminal.fill"
         case "OpenCode": return "chevron.left.forwardslash.chevron.right"
+        case "Codex": return "brain"
         default: return "cpu"
         }
     }
