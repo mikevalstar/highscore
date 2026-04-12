@@ -213,7 +213,7 @@ struct OverlayContentView: View {
                 .fill(.black.opacity(settings.overlayBackgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(.green.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
+                        .strokeBorder(settings.scoreColor.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
                 )
         )
     }
@@ -222,43 +222,49 @@ struct OverlayContentView: View {
         VStack(spacing: 2) {
             ScoreDisplay(
                 score: scoreManager.displayScore,
-                color: .green,
+                color: settings.scoreColor,
                 style: settings.displayStyle
             )
                 .frame(maxHeight: .infinity)
                 .opacity(settings.overlayScoreOpacity)
 
-            HStack(spacing: 12 * settings.overlayScale) {
-                HStack(spacing: 2 * settings.overlayScale) {
-                    Text("T")
-                        .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.cyan.opacity(0.6))
-                    ScoreDisplay(
-                        score: scoreManager.displayTodayScore,
-                        color: .cyan,
-                        style: settings.displayStyle
-                    )
+            if settings.showDailyScore || settings.showWeeklyScore {
+                HStack(spacing: 12 * settings.overlayScale) {
+                    if settings.showDailyScore {
+                        HStack(spacing: 2 * settings.overlayScale) {
+                            Text("T")
+                                .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
+                                .foregroundStyle(settings.todayScoreColor.opacity(0.6))
+                            ScoreDisplay(
+                                score: scoreManager.displayTodayScore,
+                                color: settings.todayScoreColor,
+                                style: settings.displayStyle
+                            )
+                        }
+                    }
+                    if settings.showWeeklyScore {
+                        HStack(spacing: 2 * settings.overlayScale) {
+                            Text("W")
+                                .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
+                                .foregroundStyle(settings.weekScoreColor.opacity(0.6))
+                            ScoreDisplay(
+                                score: scoreManager.displayWeekScore,
+                                color: settings.weekScoreColor,
+                                style: settings.displayStyle
+                            )
+                        }
+                    }
                 }
-                HStack(spacing: 2 * settings.overlayScale) {
-                    Text("W")
-                        .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.orange.opacity(0.6))
-                    ScoreDisplay(
-                        score: scoreManager.displayWeekScore,
-                        color: .orange,
-                        style: settings.displayStyle
-                    )
-                }
+                .frame(height: 25 * settings.overlayScale)
+                .opacity(settings.overlayScoreOpacity)
             }
-            .frame(height: 25 * settings.overlayScale)
-            .opacity(settings.overlayScoreOpacity)
 
             Text("HIGH SCORE")
                 .font(.system(size: 8 * settings.overlayScale, weight: .bold, design: .monospaced))
-                .foregroundStyle(.green.opacity(0.6))
+                .foregroundStyle(settings.scoreColor.opacity(0.6))
                 .opacity(settings.overlayScoreOpacity)
         }
-        .frame(width: scorePanelWidth, height: 120 * settings.overlayScale)
+        .frame(width: scorePanelWidth, height: (settings.showDailyScore || settings.showWeeklyScore ? 120 : 90) * settings.overlayScale)
     }
 
     private var rpgPanel: some View {

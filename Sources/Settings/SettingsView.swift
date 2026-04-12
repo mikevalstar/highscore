@@ -32,9 +32,14 @@ struct SettingsView: View {
                     .tabItem {
                         Label("Overlay", systemImage: "rectangle.on.rectangle")
                     }
+
+                BetaSettingsTab(settings: settings)
+                    .tabItem {
+                        Label("Beta", systemImage: "flask")
+                    }
             }
         }
-        .frame(width: 460, height: 520)
+        .frame(minWidth: 460, idealWidth: 500, minHeight: 480, idealHeight: 560)
     }
 }
 
@@ -49,93 +54,209 @@ struct GeneralSettingsTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            GroupBox("Score Display") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Choose the visual style used in the menubar and overlay score panels.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
-                    Picker("Style", selection: $settings.displayStyle) {
-                        ForEach(ScoreDisplayStyle.allCases) { style in
-                            Text(style.shortLabel).tag(style)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-
-                    Text(settings.displayStyle.description)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(8)
-            }
-
-            GroupBox("Tracking Start Date") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Only count tokens from files modified after this date.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
-                    DatePicker(
-                        "Start date",
-                        selection: Binding(
-                            get: { startDateValue },
-                            set: { newDate in
-                                settings.startDate = newDate.timeIntervalSince1970
-                                Log.settings.notice("Start date changed to \(newDate.description)")
-                            }
-                        ),
-                        in: ...Date(),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .font(.system(size: 12, design: .monospaced))
-
-                    Divider()
-
-                    HStack {
-                        Text("Reset to now to start fresh.")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("Score Display") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose the visual style used in the menubar and overlay score panels.")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Reset to Now") {
-                            showResetConfirmation = true
-                        }
-                        .alert("Reset Start Date?", isPresented: $showResetConfirmation) {
-                            Button("Cancel", role: .cancel) { }
-                            Button("Reset", role: .destructive) {
-                                settings.resetStartDate()
+
+                        Picker("Style", selection: $settings.displayStyle) {
+                            ForEach(ScoreDisplayStyle.allCases) { style in
+                                Text(style.shortLabel).tag(style)
                             }
-                        } message: {
-                            Text("This will reset the tracking start date to now. Your score will drop to zero until new token usage is recorded.")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        Text(settings.displayStyle.description)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Score Visibility") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose which scores to display in the menubar and overlay.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        Toggle(isOn: $settings.showDailyScore) {
+                            HStack(spacing: 6) {
+                                Text("T")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.cyan)
+                                    .frame(width: 16)
+                                Text("Show daily score")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
+                        }
+
+                        Toggle(isOn: $settings.showWeeklyScore) {
+                            HStack(spacing: 6) {
+                                Text("W")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.orange)
+                                    .frame(width: 16)
+                                Text("Show weekly score")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
                         }
                     }
+                    .padding(8)
                 }
-                .padding(8)
-            }
 
-            GroupBox("Refresh Rate") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("How often to scan for new token usage.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                GroupBox("Score Colors") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Customize the color of each score display.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
 
-                    HStack {
-                        Text("Interval")
+                        HStack(spacing: 16) {
+                            ColorPicker("Main", selection: Binding(
+                                get: { settings.scoreColor },
+                                set: { settings.scoreColor = $0 }
+                            ), supportsOpacity: false)
+                            .font(.system(size: 12, design: .monospaced))
+
+                            ColorPicker("Today", selection: Binding(
+                                get: { settings.todayScoreColor },
+                                set: { settings.todayScoreColor = $0 }
+                            ), supportsOpacity: false)
+                            .font(.system(size: 12, design: .monospaced))
+
+                            ColorPicker("Week", selection: Binding(
+                                get: { settings.weekScoreColor },
+                                set: { settings.weekScoreColor = $0 }
+                            ), supportsOpacity: false)
+                            .font(.system(size: 12, design: .monospaced))
+                        }
+
+                        HStack {
+                            Spacer()
+                            Button("Reset to Defaults") {
+                                settings.resetColorsToDefaults()
+                            }
                             .font(.system(size: 11, design: .monospaced))
-                            .frame(width: 80, alignment: .leading)
-                        Slider(value: $settings.refreshInterval, in: 1...60, step: 1)
-                        Text("\(Int(settings.refreshInterval))s")
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(width: 40, alignment: .trailing)
+                        }
+
+                        // Live preview
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(.black.opacity(0.8))
+
+                            VStack(spacing: 4) {
+                                ScoreDisplay(
+                                    score: 1_234_567,
+                                    color: settings.scoreColor,
+                                    style: settings.displayStyle
+                                )
+                                    .frame(height: 28)
+
+                                HStack(spacing: 16) {
+                                    if settings.showDailyScore {
+                                        HStack(spacing: 4) {
+                                            Text("T")
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(settings.todayScoreColor.opacity(0.6))
+                                            ScoreDisplay(
+                                                score: 42_000,
+                                                color: settings.todayScoreColor,
+                                                style: settings.displayStyle
+                                            )
+                                        }
+                                    }
+                                    if settings.showWeeklyScore {
+                                        HStack(spacing: 4) {
+                                            Text("W")
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(settings.weekScoreColor.opacity(0.6))
+                                            ScoreDisplay(
+                                                score: 250_000,
+                                                color: settings.weekScoreColor,
+                                                style: settings.displayStyle
+                                            )
+                                        }
+                                    }
+                                }
+                                .frame(height: 18)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                        }
+                        .frame(height: 64)
                     }
+                    .padding(8)
                 }
-                .padding(8)
-            }
 
-            Spacer()
+                GroupBox("Tracking Start Date") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Only count tokens from files modified after this date.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        DatePicker(
+                            "Start date",
+                            selection: Binding(
+                                get: { startDateValue },
+                                set: { newDate in
+                                    settings.startDate = newDate.timeIntervalSince1970
+                                    Log.settings.notice("Start date changed to \(newDate.description)")
+                                }
+                            ),
+                            in: ...Date(),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .font(.system(size: 12, design: .monospaced))
+
+                        Divider()
+
+                        HStack {
+                            Text("Reset to now to start fresh.")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Reset to Now") {
+                                showResetConfirmation = true
+                            }
+                            .alert("Reset Start Date?", isPresented: $showResetConfirmation) {
+                                Button("Cancel", role: .cancel) { }
+                                Button("Reset", role: .destructive) {
+                                    settings.resetStartDate()
+                                }
+                            } message: {
+                                Text("This will reset the tracking start date to now. Your score will drop to zero until new token usage is recorded.")
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Refresh Rate") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("How often to scan for new token usage.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Text("Interval")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 80, alignment: .leading)
+                            Slider(value: $settings.refreshInterval, in: 1...60, step: 1)
+                            Text("\(Int(settings.refreshInterval))s")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                    .padding(8)
+                }
+
+                Spacer()
+            }
+            .padding(16)
         }
-        .padding(16)
     }
 }
 
@@ -190,28 +311,6 @@ struct OverlaySettingsTab: View {
                                 .frame(width: 40, alignment: .trailing)
                         }
                         .opacity(settings.overlayShowScores ? 1 : 0.4)
-
-                        Divider()
-
-                        // RPG panel
-                        HStack {
-                            Toggle(isOn: $settings.overlayShowRPG) {
-                                Text("RPG panel")
-                                    .font(.system(size: 12, design: .monospaced))
-                            }
-                        }
-
-                        HStack {
-                            Text("Opacity")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 80, alignment: .leading)
-                            Slider(value: $settings.overlayRPGOpacity, in: 0.1...1.0, step: 0.05)
-                                .disabled(!settings.overlayShowRPG)
-                            Text("\(Int(settings.overlayRPGOpacity * 100))%")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 40, alignment: .trailing)
-                        }
-                        .opacity(settings.overlayShowRPG ? 1 : 0.4)
                     }
                     .padding(8)
                 }
@@ -281,7 +380,7 @@ struct OverlaySettingsTab: View {
                         VStack(spacing: 2) {
                             ScoreDisplay(
                                 score: 1_234_567,
-                                color: .green,
+                                color: settings.scoreColor,
                                 style: settings.displayStyle
                             )
                                 .frame(height: 36)
@@ -289,7 +388,7 @@ struct OverlaySettingsTab: View {
 
                             Text("HIGH SCORE")
                                 .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.green.opacity(0.6))
+                                .foregroundStyle(settings.scoreColor.opacity(0.6))
                                 .opacity(settings.overlayDisplayOpacity)
                         }
                         .padding(.horizontal, 12)
@@ -299,7 +398,7 @@ struct OverlaySettingsTab: View {
                                 .fill(.black.opacity(settings.overlayBackgroundOpacity))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(.green.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
+                                        .strokeBorder(settings.scoreColor.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
                                 )
                         )
                     }
@@ -361,6 +460,108 @@ struct SourcesSettingsTab: View {
                 }
             }
             .padding(16)
+        }
+    }
+}
+
+// MARK: - Beta Tab
+
+struct BetaSettingsTab: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flask")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.purple)
+                    Text("These features are experimental and may change.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 4)
+
+                GroupBox("Idle RPG") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("A miniature idle RPG that runs alongside your score display.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        // RPG in overlay
+                        HStack {
+                            Toggle(isOn: $settings.overlayShowRPG) {
+                                Text("Show RPG in overlay")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
+                        }
+
+                        HStack {
+                            Text("Opacity")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 80, alignment: .leading)
+                            Slider(value: $settings.overlayRPGOpacity, in: 0.1...1.0, step: 0.05)
+                                .disabled(!settings.overlayShowRPG)
+                            Text("\(Int(settings.overlayRPGOpacity * 100))%")
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        .opacity(settings.overlayShowRPG ? 1 : 0.4)
+
+                        Divider()
+
+                        // Display mode (RPG in popover)
+                        Text("Menubar popover display")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        Picker("Display Mode", selection: $settings.displayMode) {
+                            Text("Scores").tag("scores")
+                            Text("RPG").tag("rpg")
+                            Text("Both").tag("both")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Coming Soon") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        UpcomingFeatureRow(icon: "chart.line.uptrend.xyaxis", title: "Usage Graphs", description: "Visualize your token usage over time")
+                        Divider()
+                        UpcomingFeatureRow(icon: "star.fill", title: "Achievements", description: "Unlock milestones as you accumulate tokens")
+                        Divider()
+                        UpcomingFeatureRow(icon: "arrow.up.circle.fill", title: "XP Popups", description: "Floating +tokens numbers when new usage is detected")
+                    }
+                    .padding(8)
+                }
+
+                Spacer()
+            }
+            .padding(16)
+        }
+    }
+}
+
+struct UpcomingFeatureRow: View {
+    let icon: String
+    let title: String
+    let description: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(.purple.opacity(0.6))
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                Text(description)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

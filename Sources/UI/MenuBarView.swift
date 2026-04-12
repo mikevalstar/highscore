@@ -29,16 +29,13 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Header with display mode toggle
+            // Header
             HStack {
                 Spacer()
                 Text("HIGH SCORE")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer()
-            }
-            .overlay(alignment: .trailing) {
-                DisplayModeToggle(displayMode: $settings.displayMode)
             }
 
             if showScores {
@@ -50,39 +47,45 @@ struct MenuBarView: View {
                     VStack(spacing: 4) {
                         ScoreDisplay(
                             score: scoreManager.displayScore,
-                            color: .green,
+                            color: settings.scoreColor,
                             style: settings.displayStyle
                         )
                             .frame(height: 36)
 
-                        HStack(spacing: 16) {
-                            HStack(spacing: 4) {
-                                Text("T")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.cyan.opacity(0.6))
-                                ScoreDisplay(
-                                    score: scoreManager.displayTodayScore,
-                                    color: .cyan,
-                                    style: settings.displayStyle
-                                )
+                        if settings.showDailyScore || settings.showWeeklyScore {
+                            HStack(spacing: 16) {
+                                if settings.showDailyScore {
+                                    HStack(spacing: 4) {
+                                        Text("T")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(settings.todayScoreColor.opacity(0.6))
+                                        ScoreDisplay(
+                                            score: scoreManager.displayTodayScore,
+                                            color: settings.todayScoreColor,
+                                            style: settings.displayStyle
+                                        )
+                                    }
+                                }
+                                if settings.showWeeklyScore {
+                                    HStack(spacing: 4) {
+                                        Text("W")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(settings.weekScoreColor.opacity(0.6))
+                                        ScoreDisplay(
+                                            score: scoreManager.displayWeekScore,
+                                            color: settings.weekScoreColor,
+                                            style: settings.displayStyle
+                                        )
+                                    }
+                                }
                             }
-                            HStack(spacing: 4) {
-                                Text("W")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.orange.opacity(0.6))
-                                ScoreDisplay(
-                                    score: scoreManager.displayWeekScore,
-                                    color: .orange,
-                                    style: settings.displayStyle
-                                )
-                            }
+                            .frame(height: 22)
                         }
-                        .frame(height: 22)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                 }
-                .frame(width: scoreCardWidth, height: 76)
+                .frame(width: scoreCardWidth, height: settings.showDailyScore || settings.showWeeklyScore ? 76 : 52)
 
                 // Per-source breakdown (only sources with tokens > 0)
                 VStack(spacing: 6) {
@@ -141,45 +144,6 @@ struct MenuBarView: View {
         }
         .padding(16)
         .frame(width: popoverWidth)
-    }
-}
-
-// MARK: - Display Mode Toggle
-
-struct DisplayModeToggle: View {
-    @Binding var displayMode: String
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ModeButton(icon: "number.square", mode: "scores", current: $displayMode, tooltip: "Scores only")
-            ModeButton(icon: "gamecontroller", mode: "rpg", current: $displayMode, tooltip: "RPG only")
-            ModeButton(icon: "square.grid.2x2", mode: "both", current: $displayMode, tooltip: "Both")
-        }
-    }
-}
-
-struct ModeButton: View {
-    let icon: String
-    let mode: String
-    @Binding var current: String
-    let tooltip: String
-
-    var body: some View {
-        Button {
-            current = mode
-            Log.app.info("Display mode changed to \(mode, privacy: .public)")
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 10))
-                .frame(width: 20, height: 20)
-                .foregroundStyle(current == mode ? .white : .secondary)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(current == mode ? .blue.opacity(0.6) : .clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .help(tooltip)
     }
 }
 
