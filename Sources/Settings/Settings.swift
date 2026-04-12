@@ -48,7 +48,7 @@ class AppSettings: ObservableObject {
     @AppStorage("overlayOffsetY") var overlayOffsetY: Double = 20
 
     /// Whether to show the score panel in the overlay
-    @AppStorage("overlayShowScores") var overlayShowScores: Bool = false
+    @AppStorage("overlayShowScores") var overlayShowScores: Bool = true
 
     /// Whether to show the RPG panel in the overlay
     @AppStorage("overlayShowRPG") var overlayShowRPG: Bool = false

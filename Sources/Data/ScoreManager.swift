@@ -162,6 +162,7 @@ class ScoreManager: ObservableObject {
 
                 if oldTotal != finalScore.total {
                     Log.scores.notice("Score updated: \(oldTotal) → \(finalScore.total) (delta: \(finalScore.total - oldTotal))")
+                    self.startTickTimerIfNeeded()
                 } else {
                     Log.scores.notice("Score unchanged at \(finalScore.total)")
                 }
@@ -181,10 +182,12 @@ class ScoreManager: ObservableObject {
         db.saveSnapshotIfNeeded(date: weekDate, score: currentTotal)
 
         // Compute period scores
+        var periodChanged = false
         if let todaySnapshot = db.getSnapshot(date: todayDate) {
             let today = max(0, currentTotal.total - todaySnapshot.total)
             if today != todayScore {
                 Log.scores.debug("Today score: \(today) (total: \(currentTotal.total), snapshot: \(todaySnapshot.total))")
+                periodChanged = true
             }
             todayScore = today
         }
@@ -193,8 +196,13 @@ class ScoreManager: ObservableObject {
             let week = max(0, currentTotal.total - weekSnapshot.total)
             if week != weekScore {
                 Log.scores.debug("Week score: \(week) (total: \(currentTotal.total), snapshot: \(weekSnapshot.total))")
+                periodChanged = true
             }
             weekScore = week
+        }
+
+        if periodChanged {
+            startTickTimerIfNeeded()
         }
     }
 
@@ -206,7 +214,7 @@ class ScoreManager: ObservableObject {
     private func startTimers() {
         let interval = refreshInterval
         lastRefreshInterval = interval
-        Log.scores.info("Starting timers: refresh=\(String(format: "%.0f", interval))s, tick=30fps")
+        Log.scores.info("Starting timers: refresh=\(String(format: "%.0f", interval))s, tick=on-demand")
 
         // Refresh from disk at the configured interval
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
@@ -214,13 +222,26 @@ class ScoreManager: ObservableObject {
                 self?.refresh()
             }
         }
+    }
 
-        // Tick the display score toward actual score ~30fps
+    /// Starts the 30fps tick timer if not already running. The timer stops itself
+    /// once all display scores reach their targets, so it only consumes CPU while
+    /// an animation is in progress.
+    private func startTickTimerIfNeeded() {
+        guard tickTimer == nil else { return }
+        Log.scores.debug("Starting tick timer (animation in progress)")
         tickTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tickDisplayScore()
             }
         }
+    }
+
+    private func stopTickTimer() {
+        guard tickTimer != nil else { return }
+        tickTimer?.invalidate()
+        tickTimer = nil
+        Log.scores.debug("Stopped tick timer (animation complete)")
     }
 
     /// Restarts the refresh timer if the interval setting changed.
@@ -241,6 +262,14 @@ class ScoreManager: ObservableObject {
         displayScore = Self.tickValue(current: displayScore, toward: totalScore)
         displayTodayScore = Self.tickValue(current: displayTodayScore, toward: todayScore)
         displayWeekScore = Self.tickValue(current: displayWeekScore, toward: weekScore)
+
+        // Stop the timer once all values have caught up — no need to keep ticking
+        if displayScore == totalScore
+            && displayTodayScore == todayScore
+            && displayWeekScore == weekScore
+        {
+            stopTickTimer()
+        }
     }
 
     private static func tickValue(current: Int, toward target: Int) -> Int {
@@ -286,6 +315,7 @@ class ScoreManager: ObservableObject {
                 self.displayScore = cachedTotal.total
                 self.updatePeriodScores(currentTotal: cachedTotal)
                 self.restartRefreshTimerIfNeeded()
+                self.startTickTimerIfNeeded()
                 Log.scores.notice("startDate changed — recalculated cached total: \(cachedTotal.total) (since: \(since))")
                 self.isRefreshing = false
                 self.refresh()
