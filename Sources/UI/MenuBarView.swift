@@ -11,7 +11,7 @@ struct MenuBarView: View {
     }
 
     private var showRPG: Bool {
-        settings.overlayShowRPG && (settings.displayMode == "rpg" || settings.displayMode == "both")
+        false
     }
 
     var body: some View {
