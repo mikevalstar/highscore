@@ -29,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Application launched")
         NSApp.setActivationPolicy(.accessory)
+        settings.initializeStartDateIfNeeded()
 
         overlayController.wireUp(settings: settings, scoreManager: scoreManager)
 

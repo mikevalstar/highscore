@@ -116,11 +116,13 @@ class OverlayWindowController: ObservableObject {
 
         let origin = settings.overlayPosition.origin(
             overlaySize: size,
-            screenFrame: screen.visibleFrame
+            screenFrame: screen.visibleFrame,
+            offsetX: settings.overlayOffsetX,
+            offsetY: settings.overlayOffsetY
         )
         window.setFrameOrigin(origin)
         Log.overlay.debug(
-            "Position updated: \(settings.overlayPosition.rawValue), scale=\(String(format: "%.1f", scale)), origin=(\(Int(origin.x)),\(Int(origin.y)))"
+            "Position updated: \(settings.overlayPosition.rawValue), scale=\(String(format: "%.1f", scale)), offset=(\(Int(settings.overlayOffsetX)),\(Int(settings.overlayOffsetY))), origin=(\(Int(origin.x)),\(Int(origin.y)))"
         )
     }
 }
@@ -133,21 +135,22 @@ struct OverlayContentView: View {
         VStack(spacing: 2) {
             SevenSegmentScore(score: scoreManager.displayScore, color: .green)
                 .frame(maxHeight: .infinity)
+                .opacity(settings.overlayDisplayOpacity)
 
             Text("HIGH SCORE")
                 .font(.system(size: 8 * settings.overlayScale, weight: .bold, design: .monospaced))
                 .foregroundStyle(.green.opacity(0.6))
+                .opacity(settings.overlayDisplayOpacity)
         }
         .padding(.horizontal, 12 * settings.overlayScale)
         .padding(.vertical, 6 * settings.overlayScale)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(.black.opacity(0.75))
+                .fill(.black.opacity(settings.overlayBackgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(.green.opacity(0.3), lineWidth: 1)
+                        .strokeBorder(.green.opacity(0.3 * settings.overlayBackgroundOpacity), lineWidth: 1)
                 )
         )
-        .opacity(settings.overlayOpacity)
     }
 }

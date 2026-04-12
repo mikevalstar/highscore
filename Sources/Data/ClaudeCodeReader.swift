@@ -13,15 +13,17 @@ final class ClaudeCodeReader: Sendable {
     }
 
     /// Reads usage, only parsing files that have changed since last scan.
+    /// Files with mtime before `since` (Unix timestamp) are skipped entirely.
     /// On a warm start (DB populated), this returns near-instantly.
-    func readUsage() -> TokenScore {
+    func readUsage(since: Int64 = 0) -> TokenScore {
         let start = CFAbsoluteTimeGetCurrent()
 
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let claudeDir = homeDir.appendingPathComponent(".claude/projects")
 
         // Start with all scores from the DB (includes deleted files — running total)
-        let dbTotal = db.totalScore()
+        // Filter by start date so only files modified after the cutoff are counted
+        let dbTotal = db.totalScore(since: since)
 
         guard FileManager.default.fileExists(atPath: claudeDir.path) else {
             Log.reader.debug("Claude projects directory not found at \(claudeDir.path)")
@@ -64,6 +66,13 @@ final class ClaudeCodeReader: Sendable {
 
                 // Truncate to seconds for reliable comparison (avoids sub-second precision drift)
                 let modTimestamp = Int64(modDate.timeIntervalSince1970)
+
+                // Skip files modified before the start date
+                if modTimestamp < since {
+                    skippedFiles += 1
+                    continue
+                }
+
                 let cached = db.get(path)
 
                 if let cached, cached.fileSize == fileSize, cached.modifiedAt == modTimestamp {

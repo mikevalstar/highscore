@@ -165,18 +165,21 @@ final class ScoreDatabase: Sendable {
     }
 
     /// Sum all scores across every tracked file (including deleted ones — running total).
-    func totalScore() -> TokenScore {
+    /// When `since` is provided, only files with `modified_at >= since` are included.
+    func totalScore(since: Int64 = 0) -> TokenScore {
         lock.lock()
         defer { lock.unlock() }
         guard let db else { return TokenScore() }
 
-        let sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores"
+        let sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ?"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare totalScore")
             return TokenScore()
         }
         defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_int64(stmt, 1, since)
 
         guard sqlite3_step(stmt) == SQLITE_ROW else {
             return TokenScore()
