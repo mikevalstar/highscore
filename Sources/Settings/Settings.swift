@@ -48,10 +48,10 @@ class AppSettings: ObservableObject {
     @AppStorage("overlayOffsetY") var overlayOffsetY: Double = 20
 
     /// Whether to show the score panel in the overlay
-    @AppStorage("overlayShowScores") var overlayShowScores: Bool = true
+    @AppStorage("overlayShowScores") var overlayShowScores: Bool = false
 
     /// Whether to show the RPG panel in the overlay
-    @AppStorage("overlayShowRPG") var overlayShowRPG: Bool = true
+    @AppStorage("overlayShowRPG") var overlayShowRPG: Bool = false
 
     /// Opacity for the score panel (independent from RPG)
     @AppStorage("overlayScoreOpacity") var overlayScoreOpacity: Double = 0.85
@@ -60,7 +60,7 @@ class AppSettings: ObservableObject {
     @AppStorage("overlayRPGOpacity") var overlayRPGOpacity: Double = 0.85
 
     /// Which panel to show in the menubar popover: "scores", "rpg", or "both"
-    @AppStorage("displayMode") var displayMode: String = "both"
+    @AppStorage("displayMode") var displayMode: String = "scores"
 
     /// How often (in seconds) to re-scan files for new token usage.
     @AppStorage("refreshInterval") var refreshInterval: Double = 5
