@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @MainActor
 class OverlayWindowController: ObservableObject {
@@ -8,11 +9,27 @@ class OverlayWindowController: ObservableObject {
     var scoreManager: ScoreManager?
     private var defaultsObserver: Any?
     private var settingsObserver: Any?
+    private var scoreWidthObserver: AnyCancellable?
 
     func wireUp(settings: AppSettings, scoreManager: ScoreManager) {
         self.settings = settings
         self.scoreManager = scoreManager
         Log.overlay.info("Overlay controller wired up")
+
+        scoreWidthObserver = Publishers.CombineLatest3(
+            scoreManager.$displayScore,
+            scoreManager.$displayTodayScore,
+            scoreManager.$displayWeekScore
+        )
+        .map { [weak self] total, today, week in
+            self?.scorePanelBaseWidth(total: total, today: today, week: week) ?? 320
+        }
+        .removeDuplicates()
+        .sink { [weak self] _ in
+            Task { @MainActor in
+                self?.updatePosition()
+            }
+        }
 
         // Watch for overlay toggle changes from the settings window
         settingsObserver = NotificationCenter.default.addObserver(
@@ -111,7 +128,7 @@ class OverlayWindowController: ObservableObject {
         let showScores = settings.overlayShowScores
         let showRPG = settings.overlayShowRPG
 
-        let scoreWidth: CGFloat = 320
+        let scoreWidth = scorePanelBaseWidth()
         let rpgWidth: CGFloat = scoreWidth * 2.5  // RPG is 2.5x wider than scores
         let scoreHeight: CGFloat = 120
         let rpgHeight: CGFloat = 300
@@ -145,6 +162,16 @@ class OverlayWindowController: ObservableObject {
         window.setFrameOrigin(origin)
         Log.overlay.debug(
             "Position updated: \(settings.overlayPosition.rawValue), scale=\(String(format: "%.1f", scale)), offset=(\(Int(settings.overlayOffsetX)),\(Int(settings.overlayOffsetY))), origin=(\(Int(origin.x)),\(Int(origin.y)))"
+        )
+    }
+
+    private func scorePanelBaseWidth(total: Int? = nil, today: Int? = nil, week: Int? = nil) -> CGFloat {
+        guard let settings, let scoreManager else { return 320 }
+        return ScoreDisplayMetrics.scorePanelBaseWidth(
+            style: settings.displayStyle,
+            total: total ?? scoreManager.displayScore,
+            today: today ?? scoreManager.displayTodayScore,
+            week: week ?? scoreManager.displayWeekScore
         )
     }
 }
@@ -191,7 +218,11 @@ struct OverlayContentView: View {
 
     private var scorePanel: some View {
         VStack(spacing: 2) {
-            SevenSegmentScore(score: scoreManager.displayScore, color: .green)
+            ScoreDisplay(
+                score: scoreManager.displayScore,
+                color: .green,
+                style: settings.displayStyle
+            )
                 .frame(maxHeight: .infinity)
                 .opacity(settings.overlayScoreOpacity)
 
@@ -200,13 +231,21 @@ struct OverlayContentView: View {
                     Text("T")
                         .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
                         .foregroundStyle(.cyan.opacity(0.6))
-                    SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
+                    ScoreDisplay(
+                        score: scoreManager.displayTodayScore,
+                        color: .cyan,
+                        style: settings.displayStyle
+                    )
                 }
                 HStack(spacing: 2 * settings.overlayScale) {
                     Text("W")
                         .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
                         .foregroundStyle(.orange.opacity(0.6))
-                    SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
+                    ScoreDisplay(
+                        score: scoreManager.displayWeekScore,
+                        color: .orange,
+                        style: settings.displayStyle
+                    )
                 }
             }
             .frame(height: 25 * settings.overlayScale)
@@ -217,7 +256,7 @@ struct OverlayContentView: View {
                 .foregroundStyle(.green.opacity(0.6))
                 .opacity(settings.overlayScoreOpacity)
         }
-        .frame(width: 320 * settings.overlayScale, height: 120 * settings.overlayScale)
+        .frame(width: scorePanelWidth, height: 120 * settings.overlayScale)
     }
 
     private var rpgPanel: some View {
@@ -225,5 +264,14 @@ struct OverlayContentView: View {
             .frame(width: 800 * settings.overlayScale, height: 280 * settings.overlayScale)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .opacity(settings.overlayRPGOpacity)
+    }
+
+    private var scorePanelWidth: CGFloat {
+        ScoreDisplayMetrics.scorePanelBaseWidth(
+            style: settings.displayStyle,
+            total: scoreManager.displayScore,
+            today: scoreManager.displayTodayScore,
+            week: scoreManager.displayWeekScore
+        ) * settings.overlayScale
     }
 }

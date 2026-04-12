@@ -50,6 +50,27 @@ struct GeneralSettingsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            GroupBox("Score Display") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Choose the visual style used in the menubar and overlay score panels.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    Picker("Style", selection: $settings.displayStyle) {
+                        ForEach(ScoreDisplayStyle.allCases) { style in
+                            Text(style.shortLabel).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    Text(settings.displayStyle.description)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
             GroupBox("Tracking Start Date") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Only count tokens from files modified after this date.")
@@ -258,7 +279,11 @@ struct OverlaySettingsTab: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
 
                         VStack(spacing: 2) {
-                            SevenSegmentScore(score: 1_234_567)
+                            ScoreDisplay(
+                                score: 1_234_567,
+                                color: .green,
+                                style: settings.displayStyle
+                            )
                                 .frame(height: 36)
                                 .opacity(settings.overlayDisplayOpacity)
 

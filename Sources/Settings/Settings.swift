@@ -62,6 +62,9 @@ class AppSettings: ObservableObject {
     /// Which panel to show in the menubar popover: "scores", "rpg", or "both"
     @AppStorage("displayMode") var displayMode: String = "scores"
 
+    /// Which visual style to use for score digits across the app.
+    @AppStorage("displayStyle") var displayStyle: ScoreDisplayStyle = .sevenSegment
+
     /// How often (in seconds) to re-scan files for new token usage.
     @AppStorage("refreshInterval") var refreshInterval: Double = 5
 

@@ -14,6 +14,19 @@ struct MenuBarView: View {
         false
     }
 
+    private var scoreCardWidth: CGFloat {
+        ScoreDisplayMetrics.scorePanelBaseWidth(
+            style: settings.displayStyle,
+            total: scoreManager.displayScore,
+            today: scoreManager.displayTodayScore,
+            week: scoreManager.displayWeekScore
+        )
+    }
+
+    private var popoverWidth: CGFloat {
+        max(300, scoreCardWidth + 12)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             // Header with display mode toggle
@@ -35,7 +48,11 @@ struct MenuBarView: View {
                         .fill(.black.opacity(0.8))
 
                     VStack(spacing: 4) {
-                        SevenSegmentScore(score: scoreManager.displayScore, color: .green)
+                        ScoreDisplay(
+                            score: scoreManager.displayScore,
+                            color: .green,
+                            style: settings.displayStyle
+                        )
                             .frame(height: 36)
 
                         HStack(spacing: 16) {
@@ -43,13 +60,21 @@ struct MenuBarView: View {
                                 Text("T")
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(.cyan.opacity(0.6))
-                                SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
+                                ScoreDisplay(
+                                    score: scoreManager.displayTodayScore,
+                                    color: .cyan,
+                                    style: settings.displayStyle
+                                )
                             }
                             HStack(spacing: 4) {
                                 Text("W")
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(.orange.opacity(0.6))
-                                SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
+                                ScoreDisplay(
+                                    score: scoreManager.displayWeekScore,
+                                    color: .orange,
+                                    style: settings.displayStyle
+                                )
                             }
                         }
                         .frame(height: 22)
@@ -57,7 +82,7 @@ struct MenuBarView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                 }
-                .frame(height: 76)
+                .frame(width: scoreCardWidth, height: 76)
 
                 // Per-source breakdown (only sources with tokens > 0)
                 VStack(spacing: 6) {
@@ -115,7 +140,7 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
         }
         .padding(16)
-        .frame(width: 300)
+        .frame(width: popoverWidth)
     }
 }
 
