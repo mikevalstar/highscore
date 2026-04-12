@@ -2,6 +2,12 @@ import Foundation
 import SwiftUI
 import Combine
 
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 struct TokenScore: Sendable {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
@@ -41,10 +47,19 @@ class ScoreManager: ObservableObject {
     /// The displayed score that animates/ticks toward totalScore
     @Published var displayScore: Int = 0
 
+    /// Today's token usage (current total minus start-of-day snapshot)
+    @Published var todayScore: Int = 0
+    @Published var displayTodayScore: Int = 0
+
+    /// This week's token usage (current total minus start-of-week snapshot)
+    @Published var weekScore: Int = 0
+    @Published var displayWeekScore: Int = 0
+
     private var refreshTimer: Timer?
     private var tickTimer: Timer?
     private var isRefreshing = false
     private var startDateObserver: NSObjectProtocol?
+    private var lastRefreshInterval: Double = 0
 
     private let db = ScoreDatabase()
     private lazy var reader = ClaudeCodeReader(db: db)
@@ -52,6 +67,25 @@ class ScoreManager: ObservableObject {
     /// Returns the startDate setting as a Unix timestamp in seconds.
     private var startTimestamp: Int64 {
         Int64(UserDefaults.standard.double(forKey: "startDate"))
+    }
+
+    /// Today's date as YYYY-MM-DD
+    private static var todayDateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    /// Start of the current week (Monday) as YYYY-MM-DD
+    private static var weekStartDateString: String {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: Date())
+        // .weekday: 1=Sunday, 2=Monday, ..., 7=Saturday → shift to Monday-start
+        let daysFromMonday = (weekday + 5) % 7
+        let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: Date())!
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: monday)
     }
 
     init() {
@@ -66,6 +100,8 @@ class ScoreManager: ObservableObject {
             displayScore = cachedTotal.total
             Log.scores.info("Loaded cached score from DB: \(cachedTotal.total) (since: \(since))")
         }
+
+        updatePeriodScores(currentTotal: cachedTotal)
 
         refresh()
         startTimers()
@@ -93,6 +129,8 @@ class ScoreManager: ObservableObject {
                 self.totalScore = score.total
                 self.isRefreshing = false
 
+                self.updatePeriodScores(currentTotal: score)
+
                 if oldTotal != score.total {
                     Log.scores.notice("Score updated: \(oldTotal) → \(score.total) (delta: \(score.total - oldTotal))")
                 } else {
@@ -102,11 +140,47 @@ class ScoreManager: ObservableObject {
         }
     }
 
-    private func startTimers() {
-        Log.scores.info("Starting timers: refresh=5s, tick=30fps")
+    /// Saves start-of-day/week snapshots if needed and computes period scores.
+    private func updatePeriodScores(currentTotal: TokenScore) {
+        let todayDate = Self.todayDateString
+        let weekDate = Self.weekStartDateString
 
-        // Refresh from disk every 5 seconds
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Save snapshot for today if this is the first refresh of the day
+        db.saveSnapshotIfNeeded(date: todayDate, score: currentTotal)
+
+        // Save snapshot for start of week if this is the first refresh of the week
+        db.saveSnapshotIfNeeded(date: weekDate, score: currentTotal)
+
+        // Compute period scores
+        if let todaySnapshot = db.getSnapshot(date: todayDate) {
+            let today = max(0, currentTotal.total - todaySnapshot.total)
+            if today != todayScore {
+                Log.scores.debug("Today score: \(today) (total: \(currentTotal.total), snapshot: \(todaySnapshot.total))")
+            }
+            todayScore = today
+        }
+
+        if let weekSnapshot = db.getSnapshot(date: weekDate) {
+            let week = max(0, currentTotal.total - weekSnapshot.total)
+            if week != weekScore {
+                Log.scores.debug("Week score: \(week) (total: \(currentTotal.total), snapshot: \(weekSnapshot.total))")
+            }
+            weekScore = week
+        }
+    }
+
+    /// Returns the refresh interval setting in seconds.
+    private var refreshInterval: Double {
+        UserDefaults.standard.double(forKey: "refreshInterval").clamped(to: 1...60)
+    }
+
+    private func startTimers() {
+        let interval = refreshInterval
+        lastRefreshInterval = interval
+        Log.scores.info("Starting timers: refresh=\(String(format: "%.0f", interval))s, tick=30fps")
+
+        // Refresh from disk at the configured interval
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
             }
@@ -120,12 +194,32 @@ class ScoreManager: ObservableObject {
         }
     }
 
-    private func tickDisplayScore() {
-        guard displayScore != totalScore else { return }
+    /// Restarts the refresh timer if the interval setting changed.
+    private func restartRefreshTimerIfNeeded() {
+        let interval = refreshInterval
+        guard interval != lastRefreshInterval else { return }
+        lastRefreshInterval = interval
+        refreshTimer?.invalidate()
+        Log.scores.info("Refresh interval changed to \(String(format: "%.0f", interval))s — restarting timer")
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refresh()
+            }
+        }
+    }
 
-        let diff = totalScore - displayScore
-        let step: Int
+    private func tickDisplayScore() {
+        displayScore = Self.tickValue(current: displayScore, toward: totalScore)
+        displayTodayScore = Self.tickValue(current: displayTodayScore, toward: todayScore)
+        displayWeekScore = Self.tickValue(current: displayWeekScore, toward: weekScore)
+    }
+
+    private static func tickValue(current: Int, toward target: Int) -> Int {
+        guard current != target else { return current }
+
+        let diff = target - current
         let absDiff = abs(diff)
+        let step: Int
         if absDiff > 100_000 {
             step = absDiff / 10
         } else if absDiff > 10_000 {
@@ -139,9 +233,9 @@ class ScoreManager: ObservableObject {
         }
 
         if diff > 0 {
-            displayScore = min(displayScore + step, totalScore)
+            return min(current + step, target)
         } else {
-            displayScore = max(displayScore - step, totalScore)
+            return max(current - step, target)
         }
     }
 
@@ -161,6 +255,8 @@ class ScoreManager: ObservableObject {
                 self.claudeCodeScore = cachedTotal
                 self.totalScore = cachedTotal.total
                 self.displayScore = cachedTotal.total
+                self.updatePeriodScores(currentTotal: cachedTotal)
+                self.restartRefreshTimerIfNeeded()
                 Log.scores.notice("startDate changed — recalculated cached total: \(cachedTotal.total) (since: \(since))")
                 self.isRefreshing = false
                 self.refresh()

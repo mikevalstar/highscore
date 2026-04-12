@@ -47,6 +47,9 @@ class AppSettings: ObservableObject {
     @AppStorage("overlayOffsetX") var overlayOffsetX: Double = 20
     @AppStorage("overlayOffsetY") var overlayOffsetY: Double = 20
 
+    /// How often (in seconds) to re-scan files for new token usage.
+    @AppStorage("refreshInterval") var refreshInterval: Double = 5
+
     /// Unix timestamp (seconds since 1970) for when to start counting tokens.
     /// Files modified before this date are excluded. Set to 0 means "not yet initialized".
     @AppStorage("startDate") var startDate: Double = 0

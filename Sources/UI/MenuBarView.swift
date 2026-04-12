@@ -17,11 +17,30 @@ struct MenuBarView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(.black.opacity(0.8))
 
-                SevenSegmentScore(score: scoreManager.displayScore, color: .green)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                VStack(spacing: 4) {
+                    SevenSegmentScore(score: scoreManager.displayScore, color: .green)
+                        .frame(height: 36)
+
+                    HStack(spacing: 16) {
+                        HStack(spacing: 4) {
+                            Text("T")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.cyan.opacity(0.6))
+                            SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
+                        }
+                        HStack(spacing: 4) {
+                            Text("W")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.orange.opacity(0.6))
+                            SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
+                        }
+                    }
+                    .frame(height: 22)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
             }
-            .frame(height: 44)
+            .frame(height: 76)
 
             ScoreSegmentView(
                 label: "Claude Code",

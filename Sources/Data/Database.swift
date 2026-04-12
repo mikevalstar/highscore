@@ -209,8 +209,68 @@ final class ScoreDatabase: Sendable {
 
     // MARK: - Private
 
-    private func createTables() {
+    // MARK: - Daily Snapshots
+
+    /// Returns the snapshot for a given date string (YYYY-MM-DD), or nil if none exists.
+    func getSnapshot(date: String) -> TokenScore? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let db else { return nil }
+
+        let sql = "SELECT input_tokens, output_tokens, cache_read, cache_creation FROM daily_snapshots WHERE date = ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            logDBError("prepare getSnapshot")
+            return nil
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (date as NSString).utf8String, -1, nil)
+
+        guard sqlite3_step(stmt) == SQLITE_ROW else {
+            return nil
+        }
+
+        return TokenScore(
+            inputTokens: Int(sqlite3_column_int64(stmt, 0)),
+            outputTokens: Int(sqlite3_column_int64(stmt, 1)),
+            cacheReadTokens: Int(sqlite3_column_int64(stmt, 2)),
+            cacheCreationTokens: Int(sqlite3_column_int64(stmt, 3))
+        )
+    }
+
+    /// Saves a snapshot for a given date. Does not overwrite if one already exists.
+    func saveSnapshotIfNeeded(date: String, score: TokenScore) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let db else { return }
+
         let sql = """
+            INSERT OR IGNORE INTO daily_snapshots (date, input_tokens, output_tokens, cache_read, cache_creation)
+            VALUES (?, ?, ?, ?, ?)
+            """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            logDBError("prepare saveSnapshot")
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (date as NSString).utf8String, -1, nil)
+        sqlite3_bind_int64(stmt, 2, Int64(score.inputTokens))
+        sqlite3_bind_int64(stmt, 3, Int64(score.outputTokens))
+        sqlite3_bind_int64(stmt, 4, Int64(score.cacheReadTokens))
+        sqlite3_bind_int64(stmt, 5, Int64(score.cacheCreationTokens))
+
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            logDBError("step saveSnapshot")
+        }
+    }
+
+    // MARK: - Private
+
+    private func createTables() {
+        exec("""
             CREATE TABLE IF NOT EXISTS file_scores (
                 path           TEXT PRIMARY KEY,
                 file_size      INTEGER NOT NULL,
@@ -221,8 +281,16 @@ final class ScoreDatabase: Sendable {
                 cache_read     INTEGER NOT NULL DEFAULT 0,
                 cache_creation INTEGER NOT NULL DEFAULT 0
             )
-            """
-        exec(sql)
+            """)
+        exec("""
+            CREATE TABLE IF NOT EXISTS daily_snapshots (
+                date           TEXT PRIMARY KEY,
+                input_tokens   INTEGER NOT NULL DEFAULT 0,
+                output_tokens  INTEGER NOT NULL DEFAULT 0,
+                cache_read     INTEGER NOT NULL DEFAULT 0,
+                cache_creation INTEGER NOT NULL DEFAULT 0
+            )
+            """)
     }
 
     private func exec(_ sql: String) {

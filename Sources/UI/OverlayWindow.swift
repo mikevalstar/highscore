@@ -49,7 +49,7 @@ class OverlayWindowController: ObservableObject {
         let hostingView = NSHostingView(rootView: overlayView)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 110),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -109,14 +109,14 @@ class OverlayWindowController: ObservableObject {
 
         let scale = settings.overlayScale
         let baseWidth: CGFloat = 320
-        let baseHeight: CGFloat = 80
+        let baseHeight: CGFloat = 120
         let size = CGSize(width: baseWidth * scale, height: baseHeight * scale)
 
         window.setContentSize(size)
 
         let origin = settings.overlayPosition.origin(
             overlaySize: size,
-            screenFrame: screen.visibleFrame,
+            screenFrame: screen.frame,
             offsetX: settings.overlayOffsetX,
             offsetY: settings.overlayOffsetY
         )
@@ -136,6 +136,23 @@ struct OverlayContentView: View {
             SevenSegmentScore(score: scoreManager.displayScore, color: .green)
                 .frame(maxHeight: .infinity)
                 .opacity(settings.overlayDisplayOpacity)
+
+            HStack(spacing: 12 * settings.overlayScale) {
+                HStack(spacing: 2 * settings.overlayScale) {
+                    Text("T")
+                        .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.cyan.opacity(0.6))
+                    SevenSegmentScore(score: scoreManager.displayTodayScore, color: .cyan)
+                }
+                HStack(spacing: 2 * settings.overlayScale) {
+                    Text("W")
+                        .font(.system(size: 9 * settings.overlayScale, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.orange.opacity(0.6))
+                    SevenSegmentScore(score: scoreManager.displayWeekScore, color: .orange)
+                }
+            }
+            .frame(height: 25 * settings.overlayScale)
+            .opacity(settings.overlayDisplayOpacity)
 
             Text("HIGH SCORE")
                 .font(.system(size: 8 * settings.overlayScale, weight: .bold, design: .monospaced))
