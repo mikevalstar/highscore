@@ -5,9 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-swift build          # compile
+swift build          # compile (~2s incremental)
 swift run HighScore  # build + launch (menubar app — look for trophy icon)
 swift build -c release  # optimized build
+swift build 2>&1 | grep -E 'error:|warning:'  # quick check for errors only
 ```
 
 No Xcode project required. Open `Package.swift` in Xcode if you want the IDE.
