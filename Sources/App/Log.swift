@@ -8,4 +8,5 @@ enum Log {
     static let reader = Logger(subsystem: "com.highscore.app", category: "reader")
     static let overlay = Logger(subsystem: "com.highscore.app", category: "overlay")
     static let settings = Logger(subsystem: "com.highscore.app", category: "settings")
+    static let opencode = Logger(subsystem: "com.highscore.app", category: "opencode")
 }

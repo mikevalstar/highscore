@@ -13,20 +13,16 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 
 ## Phase 1 - Polish the Score Display
 
-- [ ] Auto-refresh on a timer (poll every 30-60 seconds)
-- [ ] Show per-session vs all-time scores
-- [ ] Date range filtering (today / this week / all time)
-- [ ] Animate score changes
-- [ ] Persist cached scores so startup is fast
-- [ ] Show score breakdown by project directory
+- [x] Show per-session vs all-time scores
+- [x] Date range filtering (today / this week / all time)
 
 ## Phase 2 - Additional AI Tool Sources
 
-- [ ] Plugin/adapter architecture for adding new sources
-- [ ] Claude.ai web usage (if accessible via local data)
-- [ ] ChatGPT usage (if accessible via local data)
-- [ ] Cursor / Copilot usage (if accessible via local data)
-- [ ] API key direct usage tracking (optional: user provides API key to check billing)
+- [x] Plugin/adapter architecture for adding new sources (`TokenReader` protocol)
+- [ ] Codex usage 
+- [x] OpenCode usage (reads `.opencode/opencode.db` SQLite databases per-project)
+- [ ] Cursor / Copilot usage 
+- [ ] User-configurable custom scan folders for any reader type
 
 ## Phase 3 - Idle RPG Mechanics
 

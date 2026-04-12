@@ -6,6 +6,7 @@ import SQLite3
 /// Schema:
 ///   file_scores(
 ///     path           TEXT PRIMARY KEY,
+///     source         TEXT NOT NULL DEFAULT 'claude',  -- reader source identifier
 ///     file_size      INTEGER NOT NULL,
 ///     modified_at    INTEGER NOT NULL,     -- file mtime as Unix timestamp (seconds)
 ///     scanned_at     INTEGER NOT NULL,     -- when we last parsed this file (seconds)
@@ -51,6 +52,7 @@ final class ScoreDatabase: Sendable {
 
     struct FileEntry: Sendable {
         let path: String
+        let source: String     // reader source identifier (e.g., "claude", "opencode")
         let fileSize: UInt64
         let modifiedAt: Int64  // Unix timestamp in seconds
         let scannedAt: Int64
@@ -63,7 +65,7 @@ final class ScoreDatabase: Sendable {
         defer { lock.unlock() }
         guard let db else { return nil }
 
-        let sql = "SELECT file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores WHERE path = ?"
+        let sql = "SELECT source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores WHERE path = ?"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare get")
@@ -79,28 +81,30 @@ final class ScoreDatabase: Sendable {
 
         return FileEntry(
             path: path,
-            fileSize: UInt64(sqlite3_column_int64(stmt, 0)),
-            modifiedAt: sqlite3_column_int64(stmt, 1),
-            scannedAt: sqlite3_column_int64(stmt, 2),
+            source: String(cString: sqlite3_column_text(stmt, 0)),
+            fileSize: UInt64(sqlite3_column_int64(stmt, 1)),
+            modifiedAt: sqlite3_column_int64(stmt, 2),
+            scannedAt: sqlite3_column_int64(stmt, 3),
             score: TokenScore(
-                inputTokens: Int(sqlite3_column_int64(stmt, 3)),
-                outputTokens: Int(sqlite3_column_int64(stmt, 4)),
-                cacheReadTokens: Int(sqlite3_column_int64(stmt, 5)),
-                cacheCreationTokens: Int(sqlite3_column_int64(stmt, 6))
+                inputTokens: Int(sqlite3_column_int64(stmt, 4)),
+                outputTokens: Int(sqlite3_column_int64(stmt, 5)),
+                cacheReadTokens: Int(sqlite3_column_int64(stmt, 6)),
+                cacheCreationTokens: Int(sqlite3_column_int64(stmt, 7))
             )
         )
     }
 
     /// Insert or update a file's cached state.
-    func upsert(path: String, fileSize: UInt64, modifiedAt: Int64, score: TokenScore) {
+    func upsert(path: String, fileSize: UInt64, modifiedAt: Int64, score: TokenScore, source: String = "claude") {
         lock.lock()
         defer { lock.unlock() }
         guard let db else { return }
 
         let sql = """
-            INSERT INTO file_scores (path, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO file_scores (path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path) DO UPDATE SET
+                source = excluded.source,
                 file_size = excluded.file_size,
                 modified_at = excluded.modified_at,
                 scanned_at = excluded.scanned_at,
@@ -118,13 +122,14 @@ final class ScoreDatabase: Sendable {
 
         let now = Int64(Date().timeIntervalSince1970)
         sqlite3_bind_text(stmt, 1, (path as NSString).utf8String, -1, nil)
-        sqlite3_bind_int64(stmt, 2, Int64(fileSize))
-        sqlite3_bind_int64(stmt, 3, modifiedAt)
-        sqlite3_bind_int64(stmt, 4, now)
-        sqlite3_bind_int64(stmt, 5, Int64(score.inputTokens))
-        sqlite3_bind_int64(stmt, 6, Int64(score.outputTokens))
-        sqlite3_bind_int64(stmt, 7, Int64(score.cacheReadTokens))
-        sqlite3_bind_int64(stmt, 8, Int64(score.cacheCreationTokens))
+        sqlite3_bind_text(stmt, 2, (source as NSString).utf8String, -1, nil)
+        sqlite3_bind_int64(stmt, 3, Int64(fileSize))
+        sqlite3_bind_int64(stmt, 4, modifiedAt)
+        sqlite3_bind_int64(stmt, 5, now)
+        sqlite3_bind_int64(stmt, 6, Int64(score.inputTokens))
+        sqlite3_bind_int64(stmt, 7, Int64(score.outputTokens))
+        sqlite3_bind_int64(stmt, 8, Int64(score.cacheReadTokens))
+        sqlite3_bind_int64(stmt, 9, Int64(score.cacheCreationTokens))
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             logDBError("step upsert")
@@ -137,7 +142,7 @@ final class ScoreDatabase: Sendable {
         defer { lock.unlock() }
         guard let db else { return [] }
 
-        let sql = "SELECT path, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores"
+        let sql = "SELECT path, source, file_size, modified_at, scanned_at, input_tokens, output_tokens, cache_read, cache_creation FROM file_scores"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare allEntries")
@@ -148,16 +153,18 @@ final class ScoreDatabase: Sendable {
         var entries: [FileEntry] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let path = String(cString: sqlite3_column_text(stmt, 0))
+            let source = String(cString: sqlite3_column_text(stmt, 1))
             entries.append(FileEntry(
                 path: path,
-                fileSize: UInt64(sqlite3_column_int64(stmt, 1)),
-                modifiedAt: sqlite3_column_int64(stmt, 2),
-                scannedAt: sqlite3_column_int64(stmt, 3),
+                source: source,
+                fileSize: UInt64(sqlite3_column_int64(stmt, 2)),
+                modifiedAt: sqlite3_column_int64(stmt, 3),
+                scannedAt: sqlite3_column_int64(stmt, 4),
                 score: TokenScore(
-                    inputTokens: Int(sqlite3_column_int64(stmt, 4)),
-                    outputTokens: Int(sqlite3_column_int64(stmt, 5)),
-                    cacheReadTokens: Int(sqlite3_column_int64(stmt, 6)),
-                    cacheCreationTokens: Int(sqlite3_column_int64(stmt, 7))
+                    inputTokens: Int(sqlite3_column_int64(stmt, 5)),
+                    outputTokens: Int(sqlite3_column_int64(stmt, 6)),
+                    cacheReadTokens: Int(sqlite3_column_int64(stmt, 7)),
+                    cacheCreationTokens: Int(sqlite3_column_int64(stmt, 8))
                 )
             ))
         }
@@ -166,12 +173,18 @@ final class ScoreDatabase: Sendable {
 
     /// Sum all scores across every tracked file (including deleted ones — running total).
     /// When `since` is provided, only files with `modified_at >= since` are included.
-    func totalScore(since: Int64 = 0) -> TokenScore {
+    /// When `source` is provided, only files from that reader are included.
+    func totalScore(since: Int64 = 0, source: String? = nil) -> TokenScore {
         lock.lock()
         defer { lock.unlock() }
         guard let db else { return TokenScore() }
 
-        let sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ?"
+        let sql: String
+        if source != nil {
+            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ? AND source = ?"
+        } else {
+            sql = "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_creation),0) FROM file_scores WHERE modified_at >= ?"
+        }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logDBError("prepare totalScore")
@@ -180,6 +193,9 @@ final class ScoreDatabase: Sendable {
         defer { sqlite3_finalize(stmt) }
 
         sqlite3_bind_int64(stmt, 1, since)
+        if let sourceValue = source {
+            sqlite3_bind_text(stmt, 2, (sourceValue as NSString).utf8String, -1, nil)
+        }
 
         guard sqlite3_step(stmt) == SQLITE_ROW else {
             return TokenScore()
@@ -273,6 +289,7 @@ final class ScoreDatabase: Sendable {
         exec("""
             CREATE TABLE IF NOT EXISTS file_scores (
                 path           TEXT PRIMARY KEY,
+                source         TEXT NOT NULL DEFAULT 'claude',
                 file_size      INTEGER NOT NULL,
                 modified_at    INTEGER NOT NULL,
                 scanned_at     INTEGER NOT NULL,
@@ -282,6 +299,9 @@ final class ScoreDatabase: Sendable {
                 cache_creation INTEGER NOT NULL DEFAULT 0
             )
             """)
+
+        // Migration: add source column to existing databases (safe to re-run — checks first)
+        migrateAddSourceColumn()
         exec("""
             CREATE TABLE IF NOT EXISTS daily_snapshots (
                 date           TEXT PRIMARY KEY,
@@ -291,6 +311,31 @@ final class ScoreDatabase: Sendable {
                 cache_creation INTEGER NOT NULL DEFAULT 0
             )
             """)
+    }
+
+    /// Adds the `source` column if it doesn't exist yet (migration for pre-v0.2 databases).
+    private func migrateAddSourceColumn() {
+        guard let db else { return }
+        var stmt: OpaquePointer?
+        let sql = "PRAGMA table_info(file_scores)"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        var hasSource = false
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let namePtr = sqlite3_column_text(stmt, 1) {
+                let name = String(cString: namePtr)
+                if name == "source" {
+                    hasSource = true
+                    break
+                }
+            }
+        }
+
+        if !hasSource {
+            exec("ALTER TABLE file_scores ADD COLUMN source TEXT NOT NULL DEFAULT 'claude'")
+            Log.app.notice("Migrated file_scores: added source column")
+        }
     }
 
     private func exec(_ sql: String) {

@@ -43,8 +43,8 @@ struct MenuBarView: View {
             .frame(height: 76)
 
             ScoreSegmentView(
-                label: "Claude Code",
-                score: scoreManager.claudeCodeScore,
+                label: "All Sources",
+                score: scoreManager.combinedScore,
                 icon: "terminal.fill"
             )
 

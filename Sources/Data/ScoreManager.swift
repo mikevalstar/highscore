@@ -39,7 +39,10 @@ struct TokenScore: Sendable {
 
 @MainActor
 class ScoreManager: ObservableObject {
-    @Published var claudeCodeScore = TokenScore()
+    @Published var combinedScore = TokenScore()
+
+    /// Per-reader score breakdown: reader name → score
+    @Published var readerScores: [(name: String, score: TokenScore)] = []
 
     /// The actual target score from data
     @Published var totalScore: Int = 0
@@ -62,7 +65,10 @@ class ScoreManager: ObservableObject {
     private var lastRefreshInterval: Double = 0
 
     private let db = ScoreDatabase()
-    private lazy var reader = ClaudeCodeReader(db: db)
+    private lazy var readers: [TokenReader] = [
+        ClaudeCodeReader(db: db),
+        OpenCodeReader(db: db),
+    ]
 
     /// Returns the startDate setting as a Unix timestamp in seconds.
     private var startTimestamp: Int64 {
@@ -95,7 +101,7 @@ class ScoreManager: ObservableObject {
         let since = startTimestamp
         let cachedTotal = db.totalScore(since: since)
         if cachedTotal.total > 0 {
-            claudeCodeScore = cachedTotal
+            combinedScore = cachedTotal
             totalScore = cachedTotal.total
             displayScore = cachedTotal.total
             Log.scores.info("Loaded cached score from DB: \(cachedTotal.total) (since: \(since))")
@@ -114,27 +120,44 @@ class ScoreManager: ObservableObject {
             return
         }
         isRefreshing = true
-        Log.scores.debug("Starting background refresh")
+        Log.scores.debug("Starting background refresh with \(self.readers.count) reader(s)")
 
-        let reader = self.reader
+        let readers = self.readers
         let since = startTimestamp
         Task.detached(priority: .utility) {
             let startTime = CFAbsoluteTimeGetCurrent()
-            let score = reader.readUsage(since: since)
+
+            var combined = TokenScore()
+            var perReader: [(name: String, score: TokenScore)] = []
+            for reader in readers {
+                let readerStart = CFAbsoluteTimeGetCurrent()
+                let score = reader.readUsage(since: since)
+                let readerElapsed = (CFAbsoluteTimeGetCurrent() - readerStart) * 1000
+                Log.scores.notice(
+                    "\(reader.name, privacy: .public) read completed in \(String(format: "%.0f", readerElapsed), privacy: .public)ms — total: \(score.total)"
+                )
+                combined = combined.adding(score)
+                perReader.append((name: reader.name, score: score))
+            }
+
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-            Log.scores.notice("Background read completed in \(String(format: "%.0f", elapsed), privacy: .public)ms")
+            let finalScore = combined
+            let finalPerReader = perReader
+            Log.scores.notice("All readers completed in \(String(format: "%.0f", elapsed), privacy: .public)ms — combined total: \(finalScore.total)")
+
             await MainActor.run {
-                self.claudeCodeScore = score
+                self.combinedScore = finalScore
+                self.readerScores = finalPerReader
                 let oldTotal = self.totalScore
-                self.totalScore = score.total
+                self.totalScore = finalScore.total
                 self.isRefreshing = false
 
-                self.updatePeriodScores(currentTotal: score)
+                self.updatePeriodScores(currentTotal: finalScore)
 
-                if oldTotal != score.total {
-                    Log.scores.notice("Score updated: \(oldTotal) → \(score.total) (delta: \(score.total - oldTotal))")
+                if oldTotal != finalScore.total {
+                    Log.scores.notice("Score updated: \(oldTotal) → \(finalScore.total) (delta: \(finalScore.total - oldTotal))")
                 } else {
-                    Log.scores.notice("Score unchanged at \(score.total)")
+                    Log.scores.notice("Score unchanged at \(finalScore.total)")
                 }
             }
         }
@@ -252,7 +275,7 @@ class ScoreManager: ObservableObject {
                 // Re-read the cached total with the new filter and force refresh
                 let since = self.startTimestamp
                 let cachedTotal = self.db.totalScore(since: since)
-                self.claudeCodeScore = cachedTotal
+                self.combinedScore = cachedTotal
                 self.totalScore = cachedTotal.total
                 self.displayScore = cachedTotal.total
                 self.updatePeriodScores(currentTotal: cachedTotal)

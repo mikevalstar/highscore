@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var scoreManager: ScoreManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +21,11 @@ struct SettingsView: View {
                 GeneralSettingsTab(settings: settings)
                     .tabItem {
                         Label("General", systemImage: "gear")
+                    }
+
+                SourcesSettingsTab(scoreManager: scoreManager)
+                    .tabItem {
+                        Label("Sources", systemImage: "list.bullet")
                     }
 
                 OverlaySettingsTab(settings: settings)
@@ -239,6 +245,118 @@ struct OverlaySettingsTab: View {
                 }
             }
             .padding(16)
+        }
+    }
+}
+
+// MARK: - Sources Tab
+
+struct SourcesSettingsTab: View {
+    @ObservedObject var scoreManager: ScoreManager
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                GroupBox("Token Usage by Source") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if scoreManager.readerScores.isEmpty {
+                            Text("No sources loaded yet.")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(Array(scoreManager.readerScores.enumerated()), id: \.offset) { _, entry in
+                                SourceRow(name: entry.name, score: entry.score)
+
+                                if entry.name != scoreManager.readerScores.last?.name {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Combined Total") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Total Tokens")
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            Spacer()
+                            Text(formatScore(scoreManager.combinedScore.total))
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        }
+
+                        HStack(spacing: 16) {
+                            StatLabel(label: "IN", value: scoreManager.combinedScore.inputTokens, color: .blue)
+                            StatLabel(label: "OUT", value: scoreManager.combinedScore.outputTokens, color: .green)
+                            StatLabel(label: "CACHE R", value: scoreManager.combinedScore.cacheReadTokens, color: .orange)
+                            StatLabel(label: "CACHE W", value: scoreManager.combinedScore.cacheCreationTokens, color: .purple)
+                        }
+                        .font(.system(size: 10, design: .monospaced))
+                    }
+                    .padding(8)
+                }
+            }
+            .padding(16)
+        }
+    }
+}
+
+struct SourceRow: View {
+    let name: String
+    let score: TokenScore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: iconForSource(name))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                Spacer()
+                Text(formatScore(score.total))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(score.total > 0 ? .primary : .secondary)
+            }
+
+            if score.total > 0 {
+                HStack(spacing: 16) {
+                    StatLabel(label: "IN", value: score.inputTokens, color: .blue)
+                    StatLabel(label: "OUT", value: score.outputTokens, color: .green)
+                    StatLabel(label: "CACHE R", value: score.cacheReadTokens, color: .orange)
+                    StatLabel(label: "CACHE W", value: score.cacheCreationTokens, color: .purple)
+                }
+                .font(.system(size: 10, design: .monospaced))
+            } else {
+                Text("No usage detected")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func iconForSource(_ name: String) -> String {
+        switch name {
+        case "Claude Code": return "terminal.fill"
+        case "OpenCode": return "chevron.left.forwardslash.chevron.right"
+        default: return "cpu"
+        }
+    }
+}
+
+struct StatLabel: View {
+    let label: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(color.opacity(0.7))
+                .frame(width: 6, height: 6)
+            Text("\(label): \(formatCompact(value))")
+                .foregroundStyle(.secondary)
         }
     }
 }

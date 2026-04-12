@@ -5,9 +5,11 @@ import AppKit
 class SettingsWindowController {
     private var window: NSWindow?
     private let settings: AppSettings
+    private let scoreManager: ScoreManager
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, scoreManager: ScoreManager) {
         self.settings = settings
+        self.scoreManager = scoreManager
     }
 
     func open() {
@@ -19,7 +21,7 @@ class SettingsWindowController {
         }
         Log.settings.info("Opening settings window")
 
-        let settingsView = SettingsView(settings: settings)
+        let settingsView = SettingsView(settings: settings, scoreManager: scoreManager)
         let hostingView = NSHostingView(rootView: settingsView)
 
         let window = NSWindow(

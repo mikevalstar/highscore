@@ -24,7 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings.shared
     let scoreManager = ScoreManager()
     let overlayController = OverlayWindowController()
-    lazy var settingsController = SettingsWindowController(settings: settings)
+    lazy var settingsController = SettingsWindowController(settings: settings, scoreManager: scoreManager)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Application launched")

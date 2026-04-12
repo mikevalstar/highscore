@@ -5,7 +5,8 @@ import Foundation
 /// Uses a SQLite database to persist file state across app launches.
 /// Only re-parses files whose size or mtime has changed.
 /// All public methods are safe to call from any thread.
-final class ClaudeCodeReader: Sendable {
+final class ClaudeCodeReader: TokenReader, Sendable {
+    let name = "Claude Code"
     private let db: ScoreDatabase
 
     init(db: ScoreDatabase) {
