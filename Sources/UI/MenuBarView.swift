@@ -59,11 +59,19 @@ struct MenuBarView: View {
                 }
                 .frame(height: 76)
 
-                ScoreSegmentView(
-                    label: "All Sources",
-                    score: scoreManager.combinedScore,
-                    icon: "terminal.fill"
-                )
+                // Per-source breakdown (only sources with tokens > 0)
+                VStack(spacing: 6) {
+                    ForEach(
+                        scoreManager.readerScores.filter { $0.score.total > 0 },
+                        id: \.name
+                    ) { reader in
+                        SourceRowView(
+                            name: reader.name,
+                            score: reader.score,
+                            icon: iconForSource(reader.name)
+                        )
+                    }
+                }
             }
 
             if showRPG {
@@ -150,86 +158,167 @@ struct ModeButton: View {
     }
 }
 
-struct ScoreSegmentView: View {
-    let label: String
+// MARK: - Source Row (collapsed/expanded per-source view)
+
+struct SourceRowView: View {
+    let name: String
     let score: TokenScore
     let icon: String
 
+    @State private var isExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                Spacer()
-                Text(formatScore(score.total))
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-            }
-
-            HStack(spacing: 0) {
-                ScoreBar(label: "IN", value: score.inputTokens, color: .blue)
-                ScoreBar(label: "OUT", value: score.outputTokens, color: .green)
-                ScoreBar(label: "CACHE", value: score.cacheReadTokens, color: .orange)
-                ScoreBar(label: "RSN", value: score.reasoningTokens, color: .pink)
-            }
-            .frame(height: 24)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-            HStack {
-                ScoreLegend(label: "IN", value: score.inputTokens, color: .blue)
-                Spacer()
-                ScoreLegend(label: "OUT", value: score.outputTokens, color: .green)
-                Spacer()
-                ScoreLegend(label: "CACHE", value: score.cacheReadTokens, color: .orange)
-                if score.reasoningTokens > 0 {
-                    Spacer()
-                    ScoreLegend(label: "RSN", value: score.reasoningTokens, color: .pink)
+        VStack(spacing: 0) {
+            // Compact row: icon, name, bar, total
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14)
+
+                    Text(name)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.primary)
+
+                    TokenBar(score: score)
+                        .frame(height: 12)
+
+                    Text(formatScore(score.total))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(minWidth: 44, alignment: .trailing)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
             }
-            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .buttonStyle(.plain)
+
+            // Expanded legend
+            if isExpanded {
+                VStack(spacing: 4) {
+                    HStack(spacing: 12) {
+                        TokenLegendItem(label: "IN", value: score.inputTokens, color: .blue)
+                        TokenLegendItem(label: "OUT", value: score.outputTokens, color: .green)
+                        Spacer()
+                    }
+                    HStack(spacing: 12) {
+                        TokenLegendItem(label: "CACHE", value: score.cacheReadTokens, color: .orange)
+                        if score.reasoningTokens > 0 {
+                            TokenLegendItem(label: "RSN", value: score.reasoningTokens, color: .pink)
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .padding(10)
         .background(.quaternary.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
-struct ScoreBar: View {
-    let label: String
-    let value: Int
-    let color: Color
+// MARK: - Token Bar (improved visuals)
+
+struct TokenBar: View {
+    let score: TokenScore
+
+    private var segments: [(label: String, value: Int, color: Color)] {
+        [
+            ("IN", score.inputTokens, .blue),
+            ("OUT", score.outputTokens, .green),
+            ("CACHE", score.cacheReadTokens, .orange),
+            ("RSN", score.reasoningTokens, .pink),
+        ].filter { $0.value > 0 }
+    }
 
     var body: some View {
         GeometryReader { geo in
-            if value > 0 {
-                Rectangle()
-                    .fill(color.opacity(0.7))
-                    .overlay {
-                        if geo.size.width > 30 {
-                            Text(label)
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
+            let total = segments.reduce(0) { $0 + $1.value }
+
+            // Dark inset track
+            RoundedRectangle(cornerRadius: 4)
+                .fill(.black.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(.white.opacity(0.05), lineWidth: 0.5)
+                )
+                .overlay {
+                    if total > 0 {
+                        HStack(spacing: 1) {
+                            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                                let fraction = CGFloat(segment.value) / CGFloat(total)
+                                let segmentWidth = (geo.size.width - CGFloat(segments.count - 1)) * fraction
+
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                segment.color.opacity(0.9),
+                                                segment.color.opacity(0.6),
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(.white.opacity(0.15))
+                                            .frame(height: geo.size.height * 0.4)
+                                            .offset(y: -geo.size.height * 0.15),
+                                        alignment: .top
+                                    )
+                                    .frame(width: max(segmentWidth, 3))
+                            }
                         }
+                        .padding(1.5)
                     }
-            }
+                }
         }
     }
 }
 
-struct ScoreLegend: View {
+// MARK: - Token Legend Item
+
+struct TokenLegendItem: View {
     let label: String
     let value: Int
     let color: Color
 
     var body: some View {
-        HStack(spacing: 3) {
-            Circle()
-                .fill(color.opacity(0.7))
-                .frame(width: 6, height: 6)
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(
+                    LinearGradient(
+                        colors: [color.opacity(0.9), color.opacity(0.6)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 8, height: 8)
             Text("\(label): \(formatCompact(value))")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// MARK: - Source Icon Mapping
+
+func iconForSource(_ name: String) -> String {
+    switch name {
+    case "Claude Code": return "terminal.fill"
+    case "Cursor": return "cursorarrow.rays"
+    case "Copilot": return "airplane"
+    case "OpenCode": return "chevron.left.forwardslash.chevron.right"
+    case "Codex": return "book.closed.fill"
+    default: return "questionmark.circle"
     }
 }
 
