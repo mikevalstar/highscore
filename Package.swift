@@ -10,7 +10,7 @@ let package = Package(
         .executableTarget(
             name: "HighScore",
             path: "Sources",
-            exclude: ["App/Info.plist"]
+            exclude: ["App/Info.plist", "App/AppIcon.icns", "App/AppIcon-dark.icns"]
         )
     ]
 )

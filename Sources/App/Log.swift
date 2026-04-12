@@ -1,16 +1,16 @@
 import os
 
 /// Centralized loggers using Apple's os.Logger.
-/// View in Console.app: filter by subsystem "com.highscore.app"
+/// View in Console.app: filter by subsystem "org.mikevalstar.highscore"
 enum Log {
-    static let app = Logger(subsystem: "com.highscore.app", category: "app")
-    static let scores = Logger(subsystem: "com.highscore.app", category: "scores")
-    static let reader = Logger(subsystem: "com.highscore.app", category: "reader")
-    static let overlay = Logger(subsystem: "com.highscore.app", category: "overlay")
-    static let settings = Logger(subsystem: "com.highscore.app", category: "settings")
-    static let opencode = Logger(subsystem: "com.highscore.app", category: "opencode")
-    static let codex = Logger(subsystem: "com.highscore.app", category: "codex")
-    static let copilot = Logger(subsystem: "com.highscore.app", category: "copilot")
-    static let cursor = Logger(subsystem: "com.highscore.app", category: "cursor")
-    static let rpg = Logger(subsystem: "com.highscore.app", category: "rpg")
+    static let app = Logger(subsystem: "org.mikevalstar.highscore", category: "app")
+    static let scores = Logger(subsystem: "org.mikevalstar.highscore", category: "scores")
+    static let reader = Logger(subsystem: "org.mikevalstar.highscore", category: "reader")
+    static let overlay = Logger(subsystem: "org.mikevalstar.highscore", category: "overlay")
+    static let settings = Logger(subsystem: "org.mikevalstar.highscore", category: "settings")
+    static let opencode = Logger(subsystem: "org.mikevalstar.highscore", category: "opencode")
+    static let codex = Logger(subsystem: "org.mikevalstar.highscore", category: "codex")
+    static let copilot = Logger(subsystem: "org.mikevalstar.highscore", category: "copilot")
+    static let cursor = Logger(subsystem: "org.mikevalstar.highscore", category: "cursor")
+    static let rpg = Logger(subsystem: "org.mikevalstar.highscore", category: "rpg")
 }

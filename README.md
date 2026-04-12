@@ -39,10 +39,10 @@ The app logs extensively via `os.Logger` for debuggability:
 
 ```bash
 # Live stream
-/usr/bin/log stream --predicate 'subsystem == "com.highscore.app"' --info --style compact
+/usr/bin/log stream --predicate 'subsystem == "org.mikevalstar.highscore"' --info --style compact
 
 # With per-file detail
-/usr/bin/log show --predicate 'subsystem == "com.highscore.app"' --last 60s --info --debug --style compact
+/usr/bin/log show --predicate 'subsystem == "org.mikevalstar.highscore"' --last 60s --info --debug --style compact
 ```
 
 ## Roadmap

@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble .app bundle
+        run: |
+          APP="HighScore.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+
+          # Copy binary
+          cp .build/release/HighScore "$APP/Contents/MacOS/HighScore"
+
+          # Copy resources
+          cp Sources/App/Info.plist "$APP/Contents/Info.plist"
+          cp Sources/App/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+          cp Sources/App/AppIcon-dark.icns "$APP/Contents/Resources/AppIcon-dark.icns"
+
+          # Override version from release tag
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_REF_NAME#v}" "$APP/Contents/Info.plist"
+
+      - name: Create zip
+        run: ditto -c -k --keepParent HighScore.app HighScore.zip
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" HighScore.zip --clobber

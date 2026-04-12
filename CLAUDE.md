@@ -19,14 +19,14 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) for all commit 
 
 ## Viewing Logs
 
-The app uses `os.Logger` (subsystem: `com.highscore.app`). Categories: `app`, `scores`, `reader`, `overlay`, `settings`.
+The app uses `os.Logger` (subsystem: `org.mikevalstar.highscore`). Categories: `app`, `scores`, `reader`, `overlay`, `settings`.
 
 ```bash
 # Live stream
-/usr/bin/log stream --predicate 'subsystem == "com.highscore.app"' --info --style compact
+/usr/bin/log stream --predicate 'subsystem == "org.mikevalstar.highscore"' --info --style compact
 
 # Recent history (include --debug for per-file detail)
-/usr/bin/log show --predicate 'subsystem == "com.highscore.app"' --last 60s --info --debug --style compact
+/usr/bin/log show --predicate 'subsystem == "org.mikevalstar.highscore"' --last 60s --info --debug --style compact
 ```
 
 Use `/usr/bin/log` (full path) to avoid shell alias conflicts.
@@ -70,5 +70,40 @@ The goal: an AI agent reading the log output should be able to diagnose any issu
 ## Data Source Format
 
 Claude Code JSONL files contain one JSON object per line. Usage data lives at `message.usage` (or top-level `usage`) with fields: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+
+## Releasing
+
+Releases are built and published automatically by GitHub Actions (`.github/workflows/release.yml`).
+
+### To cut a release
+
+1. Update `CFBundleShortVersionString` and `CFBundleVersion` in `Sources/App/Info.plist` to the new version.
+2. Commit, push to `main`.
+3. Create a GitHub release with a `v`-prefixed tag:
+   ```bash
+   gh release create v0.1.0 --title "v0.1.0" --generate-notes
+   ```
+4. The workflow will: build a release binary on `macos-15`, assemble a `.app` bundle (with icons and Info.plist), zip it, and attach `HighScore.zip` to the release.
+
+### Local test build
+
+```bash
+swift build -c release
+APP="HighScore.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp .build/release/HighScore "$APP/Contents/MacOS/HighScore"
+cp Sources/App/Info.plist "$APP/Contents/Info.plist"
+cp Sources/App/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Sources/App/AppIcon-dark.icns "$APP/Contents/Resources/AppIcon-dark.icns"
+ditto -c -k --keepParent HighScore.app HighScore.zip
+```
+
+### Notes
+
+- The app is **unsigned** — users must right-click → Open on first launch to bypass Gatekeeper.
+- The workflow overrides the version in Info.plist with the release tag (stripping the `v` prefix).
+- App icons: `AppIcon.icns` (light mode), `AppIcon-dark.icns` (dark mode) — the app switches automatically based on macOS appearance.
+
+## Data Source Format
 
 - **Data source (Cursor)**: SQLite DB at `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` — conversation data in `cursorDiskKV` table under `composerData:<uuid>` keys. `tokenCount` provides approximate input/context tokens; output tokens are estimated from assistant message text (~4 chars/token). No exact API-level token counts are stored locally by Cursor.
