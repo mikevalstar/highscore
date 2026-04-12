@@ -137,6 +137,7 @@ private struct DotMatrixScore: View {
                 )
             }
         }
+        .drawingGroup()  // Rasterize many cell shadows into a single Metal texture
     }
 }
 
@@ -160,6 +161,7 @@ private struct PixelArcadeScore: View {
                 )
             }
         }
+        .drawingGroup()  // Rasterize many cell shadows into a single Metal texture
     }
 }
 
@@ -202,6 +204,7 @@ private struct TerminalCRTScore: View {
             }
             .fixedSize(horizontal: true, vertical: false)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .drawingGroup()  // Rasterize blur/shadow/scanlines into a single Metal texture
         }
     }
 }

@@ -66,6 +66,7 @@ class ScoreManager: ObservableObject {
     private var isRefreshing = false
     private var startDateObserver: NSObjectProtocol?
     private var lastRefreshInterval: Double = 0
+    private var lastStartTimestamp: Int64 = 0
 
     private let db = ScoreDatabase()
     private lazy var readers: [TokenReader] = [
@@ -105,6 +106,7 @@ class ScoreManager: ObservableObject {
 
         // Load cached total from DB immediately so the UI shows a score right away
         let since = startTimestamp
+        lastStartTimestamp = since
         let cachedTotal = db.totalScore(since: since)
         if cachedTotal.total > 0 {
             combinedScore = cachedTotal
@@ -126,7 +128,7 @@ class ScoreManager: ObservableObject {
             return
         }
         isRefreshing = true
-        Log.scores.debug("Starting background refresh with \(self.readers.count) reader(s)")
+        Log.scores.notice("Refresh starting with \(self.readers.count) reader(s), tickTimer=\(self.tickTimer != nil ? "running" : "stopped")")
 
         let readers = self.readers
         let since = startTimestamp
@@ -152,20 +154,28 @@ class ScoreManager: ObservableObject {
             Log.scores.notice("All readers completed in \(String(format: "%.0f", elapsed), privacy: .public)ms — combined total: \(finalScore.total)")
 
             await MainActor.run {
-                self.combinedScore = finalScore
-                self.readerScores = finalPerReader
                 let oldTotal = self.totalScore
-                self.totalScore = finalScore.total
                 self.isRefreshing = false
 
-                self.updatePeriodScores(currentTotal: finalScore)
-
-                if oldTotal != finalScore.total {
+                // Only publish changes to avoid unnecessary SwiftUI redraws
+                if finalScore.total != oldTotal {
+                    self.combinedScore = finalScore
+                    self.totalScore = finalScore.total
                     Log.scores.notice("Score updated: \(oldTotal) → \(finalScore.total) (delta: \(finalScore.total - oldTotal))")
                     self.startTickTimerIfNeeded()
                 } else {
                     Log.scores.notice("Score unchanged at \(finalScore.total)")
                 }
+
+                // Only update readerScores if the breakdown changed
+                let oldScores = self.readerScores
+                let scoresChanged = oldScores.count != finalPerReader.count
+                    || zip(oldScores, finalPerReader).contains { $0.0.name != $0.1.name || $0.0.score.total != $0.1.score.total }
+                if scoresChanged {
+                    self.readerScores = finalPerReader
+                }
+
+                self.updatePeriodScores(currentTotal: finalScore)
             }
         }
     }
@@ -187,18 +197,18 @@ class ScoreManager: ObservableObject {
             let today = max(0, currentTotal.total - todaySnapshot.total)
             if today != todayScore {
                 Log.scores.debug("Today score: \(today) (total: \(currentTotal.total), snapshot: \(todaySnapshot.total))")
+                todayScore = today
                 periodChanged = true
             }
-            todayScore = today
         }
 
         if let weekSnapshot = db.getSnapshot(date: weekDate) {
             let week = max(0, currentTotal.total - weekSnapshot.total)
             if week != weekScore {
                 Log.scores.debug("Week score: \(week) (total: \(currentTotal.total), snapshot: \(weekSnapshot.total))")
+                weekScore = week
                 periodChanged = true
             }
-            weekScore = week
         }
 
         if periodChanged {
@@ -207,8 +217,11 @@ class ScoreManager: ObservableObject {
     }
 
     /// Returns the refresh interval setting in seconds.
+    /// Note: `@AppStorage` defaults don't apply to raw `UserDefaults.double(forKey:)`,
+    /// which returns 0 when the key is absent. We default to 5s in that case.
     private var refreshInterval: Double {
-        UserDefaults.standard.double(forKey: "refreshInterval").clamped(to: 1...60)
+        let raw = UserDefaults.standard.double(forKey: "refreshInterval")
+        return (raw > 0 ? raw : 5).clamped(to: 1...60)
     }
 
     private func startTimers() {
@@ -258,16 +271,29 @@ class ScoreManager: ObservableObject {
         }
     }
 
+    private var tickCount: Int = 0
+    private var lastTickLog: CFAbsoluteTime = 0
+
     private func tickDisplayScore() {
+        let now = CFAbsoluteTimeGetCurrent()
+        tickCount += 1
         displayScore = Self.tickValue(current: displayScore, toward: totalScore)
         displayTodayScore = Self.tickValue(current: displayTodayScore, toward: todayScore)
         displayWeekScore = Self.tickValue(current: displayWeekScore, toward: weekScore)
+
+        // Log tick activity every 5 seconds to avoid spam
+        if now - lastTickLog >= 5.0 {
+            Log.scores.notice("Tick timer active: \(self.tickCount) ticks in last 5s, display=\(self.displayScore) target=\(self.totalScore) delta=\(self.totalScore - self.displayScore)")
+            tickCount = 0
+            lastTickLog = now
+        }
 
         // Stop the timer once all values have caught up — no need to keep ticking
         if displayScore == totalScore
             && displayTodayScore == todayScore
             && displayWeekScore == weekScore
         {
+            Log.scores.notice("Tick timer stopping — all display scores reached targets")
             stopTickTimer()
         }
     }
@@ -307,8 +333,15 @@ class ScoreManager: ObservableObject {
         ) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
-                // Re-read the cached total with the new filter and force refresh
                 let since = self.startTimestamp
+                guard since != self.lastStartTimestamp else {
+                    Log.scores.debug("UserDefaults changed — startDate unchanged, checking refreshInterval only")
+                    self.restartRefreshTimerIfNeeded()
+                    return
+                }
+                self.lastStartTimestamp = since
+
+                // Re-read the cached total with the new filter and force refresh
                 let cachedTotal = self.db.totalScore(since: since)
                 self.combinedScore = cachedTotal
                 self.totalScore = cachedTotal.total

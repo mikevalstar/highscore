@@ -16,21 +16,6 @@ class OverlayWindowController: ObservableObject {
         self.scoreManager = scoreManager
         Log.overlay.info("Overlay controller wired up")
 
-        scoreWidthObserver = Publishers.CombineLatest3(
-            scoreManager.$displayScore,
-            scoreManager.$displayTodayScore,
-            scoreManager.$displayWeekScore
-        )
-        .map { [weak self] total, today, week in
-            self?.scorePanelBaseWidth(total: total, today: today, week: week) ?? 320
-        }
-        .removeDuplicates()
-        .sink { [weak self] _ in
-            Task { @MainActor in
-                self?.updatePosition()
-            }
-        }
-
         // Watch for overlay toggle changes from the settings window
         settingsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -87,6 +72,22 @@ class OverlayWindowController: ObservableObject {
 
         Log.overlay.info("Overlay panel shown at position \(settings.overlayPosition.rawValue)")
 
+        // Track score width changes to resize the overlay panel
+        scoreWidthObserver = Publishers.CombineLatest3(
+            scoreManager.$displayScore,
+            scoreManager.$displayTodayScore,
+            scoreManager.$displayWeekScore
+        )
+        .map { [weak self] total, today, week in
+            self?.scorePanelBaseWidth(total: total, today: today, week: week) ?? 320
+        }
+        .removeDuplicates()
+        .sink { [weak self] _ in
+            Task { @MainActor in
+                self?.updatePosition()
+            }
+        }
+
         // Watch for position/scale/opacity changes
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -103,6 +104,7 @@ class OverlayWindowController: ObservableObject {
         Log.overlay.info("Hiding overlay panel")
         window?.orderOut(nil)
         window = nil
+        scoreWidthObserver = nil
         if let obs = defaultsObserver {
             NotificationCenter.default.removeObserver(obs)
             defaultsObserver = nil

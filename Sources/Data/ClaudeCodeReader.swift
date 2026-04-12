@@ -31,6 +31,7 @@ final class ClaudeCodeReader: TokenReader, Sendable {
             return dbTotal
         }
 
+        let dirListStart = CFAbsoluteTimeGetCurrent()
         guard let projectDirs = try? FileManager.default.contentsOfDirectory(
             at: claudeDir,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -39,10 +40,13 @@ final class ClaudeCodeReader: TokenReader, Sendable {
             Log.reader.warning("Failed to list project directories")
             return dbTotal
         }
+        let dirListElapsed = (CFAbsoluteTimeGetCurrent() - dirListStart) * 1000
+        Log.reader.notice("Listed \(projectDirs.count) project dirs in \(String(format: "%.1f", dirListElapsed), privacy: .public)ms")
 
         var totalFiles = 0
         var parsedFiles = 0
         var skippedFiles = 0
+        var statTime: Double = 0
         var deltaScore = TokenScore() // net change from files we re-parsed
 
         for projectDir in projectDirs {
@@ -58,12 +62,14 @@ final class ClaudeCodeReader: TokenReader, Sendable {
                 totalFiles += 1
                 let path = file.path
 
+                let statStart = CFAbsoluteTimeGetCurrent()
                 guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
                       let fileSize = attrs[.size] as? UInt64,
                       let modDate = attrs[.modificationDate] as? Date else {
                     Log.reader.debug("Could not stat file: \(path)")
                     continue
                 }
+                statTime += CFAbsoluteTimeGetCurrent() - statStart
 
                 // Truncate to seconds for reliable comparison (avoids sub-second precision drift)
                 let modTimestamp = Int64(modDate.timeIntervalSince1970)
@@ -109,8 +115,9 @@ final class ClaudeCodeReader: TokenReader, Sendable {
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
         let elapsedStr = String(format: "%.1f", elapsed)
+        let statTimeStr = String(format: "%.1f", statTime * 1000)
         Log.reader.notice(
-            "Scan complete: \(totalFiles) files, \(parsedFiles) parsed, \(skippedFiles) cached, \(elapsedStr, privacy: .public)ms elapsed — db has \(self.db.count()) entries"
+            "Scan complete: \(totalFiles) files, \(parsedFiles) parsed, \(skippedFiles) cached, \(elapsedStr, privacy: .public)ms elapsed (stat: \(statTimeStr, privacy: .public)ms) — db has \(self.db.count()) entries"
         )
         Log.reader.notice(
             "Totals — in: \(finalScore.inputTokens), out: \(finalScore.outputTokens), cacheRead: \(finalScore.cacheReadTokens), cacheCreate: \(finalScore.cacheCreationTokens)"
