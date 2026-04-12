@@ -24,9 +24,12 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 - [x] Reasoning token tracking (supported for Codex and OpenCode sources)
 - [x] Copilot CLI usage (reads `~/.copilot/session-state/<uuid>/events.jsonl` — output tokens only, no input token data available from Copilot)
 - [x] Cursor usage (reads `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` — context tokens from `tokenCount`, output tokens estimated from assistant text)
-- [ ] User-configurable custom scan folders for any reader type
 
-## Phase 3 - Idle RPG Mechanics
+## Phase 3 - Overlay & Visual Flair (1)
+
+- [ ] Setup placeholder UI for RPG element
+
+## Phase 4 - Idle RPG Mechanics
 
 - [ ] XP system: tokens map to XP with scaling curve
 - [ ] Levels: level up based on cumulative XP
@@ -36,7 +39,7 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 - [ ] Daily streak tracking
 - [ ] Prestige system for resetting and gaining multipliers
 
-## Phase 4 - Overlay & Visual Flair
+## Phase 5 - Overlay & Visual Flair (2)
 
 - [ ] Floating overlay option (always-on-top mini HUD in screen corner)
 - [ ] Pixel art character display
@@ -45,20 +48,24 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 - [ ] Customizable overlay position and size
 - [ ] Dark/light theme support
 
-## Phase 5 - Persistence & Sync
+## Phase 6 - Persistence & Sync
 
 - [ ] Local SQLite database for historical tracking
 - [ ] Export stats as JSON/CSV
 - [ ] Charts: usage over time, tokens per day/week
 - [ ] Optional: iCloud sync for multi-machine tracking
 
-## Phase 6 - Social & Fun
+## Phase 7 - Social & Fun
 
 - [ ] Leaderboard (opt-in, anonymous)
 - [ ] Share achievement cards (generate image)
 - [ ] "Boss battles" — special challenges (e.g., "use 1M tokens in a day")
 - [ ] Loot/item drops based on usage patterns
 - [ ] Pet companion that reacts to your activity
+
+## Future ideas
+
+- [ ] User-configurable custom scan folders for any reader type
 
 ## Technical Notes
 
@@ -68,5 +75,6 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 - **Data source (Codex)**: Rollout JSONL files in `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — last `token_count` event per file provides `input_tokens`, `output_tokens`, `cached_input_tokens`, `reasoning_output_tokens`
 - **Data source (OpenCode)**: SQLite DB at `~/.local/share/opencode/opencode.db` — token usage in `message.data` JSON: `$.tokens.{input,output,reasoning,cache.read,cache.write}`
 - **Data source (Copilot CLI)**: Event JSONL files in `~/.copilot/session-state/<uuid>/events.jsonl` — `assistant.message` events provide `outputTokens` only (no input/cache/reasoning token counts available)
+- **Data source (Cursor)**: SQLite DB at `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` — conversation metadata in `cursorDiskKV` table under `composerData:<uuid>` keys; per-bubble token counts (`inputTokens`, `outputTokens`) in `bubbleId:<composerId>:<bubbleId>` entries. Older format stores inline `conversation` array with context `tokenCount`. Note: only agent/composer mode populates token counts — chat mode records 0.
 - **Architecture**: `ScoreManager` (ObservableObject) orchestrates readers; each source (Claude Code, etc.) has its own reader struct
 - **No Xcode project**: open `Package.swift` in Xcode if you want the IDE experience
