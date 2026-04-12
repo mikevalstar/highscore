@@ -38,7 +38,7 @@ final class ScoreDatabase: Sendable {
         // Relaxed sync — we can rebuild from files if the DB corrupts
         exec("PRAGMA synchronous=NORMAL")
 
-        createTables()
+        runMigrations()
         Log.app.info("Database ready")
     }
 
@@ -223,8 +223,6 @@ final class ScoreDatabase: Sendable {
         return Int(sqlite3_column_int64(stmt, 0))
     }
 
-    // MARK: - Private
-
     // MARK: - Daily Snapshots
 
     /// Returns the snapshot for a given date string (YYYY-MM-DD), or nil if none exists.
@@ -285,57 +283,147 @@ final class ScoreDatabase: Sendable {
 
     // MARK: - Private
 
-    private func createTables() {
-        exec("""
-            CREATE TABLE IF NOT EXISTS file_scores (
-                path           TEXT PRIMARY KEY,
-                source         TEXT NOT NULL DEFAULT 'claude',
-                file_size      INTEGER NOT NULL,
-                modified_at    INTEGER NOT NULL,
-                scanned_at     INTEGER NOT NULL,
-                input_tokens   INTEGER NOT NULL DEFAULT 0,
-                output_tokens  INTEGER NOT NULL DEFAULT 0,
-                cache_read     INTEGER NOT NULL DEFAULT 0,
-                cache_creation INTEGER NOT NULL DEFAULT 0
-            )
-            """)
+    // MARK: - Migration System
 
-        // Migration: add source column to existing databases (safe to re-run — checks first)
-        migrateAddSourceColumn()
+    /// Current schema version. Bump this and add a case to `runMigration(_:)` for each new migration.
+    private static let currentVersion = 3
+
+    /// Reads the current DB version from the env table. Returns 0 if the table doesn't exist (fresh or pre-migration DB).
+    private func getDBVersion() -> Int {
+        guard let db else { return 0 }
+        // Check if env table exists
+        var checkStmt: OpaquePointer?
+        let checkSQL = "SELECT name FROM sqlite_master WHERE type='table' AND name='env'"
+        guard sqlite3_prepare_v2(db, checkSQL, -1, &checkStmt, nil) == SQLITE_OK else { return 0 }
+        let hasEnvTable = sqlite3_step(checkStmt) == SQLITE_ROW
+        sqlite3_finalize(checkStmt)
+
+        guard hasEnvTable else { return 0 }
+
+        var stmt: OpaquePointer?
+        let sql = "SELECT value FROM env WHERE key = 'db_version'"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_step(stmt) == SQLITE_ROW,
+              let valuePtr = sqlite3_column_text(stmt, 0) else { return 0 }
+
+        return Int(String(cString: valuePtr)) ?? 0
+    }
+
+    /// Updates the stored DB version in the env table.
+    private func setDBVersion(_ version: Int) {
         exec("""
-            CREATE TABLE IF NOT EXISTS daily_snapshots (
-                date           TEXT PRIMARY KEY,
-                input_tokens   INTEGER NOT NULL DEFAULT 0,
-                output_tokens  INTEGER NOT NULL DEFAULT 0,
-                cache_read     INTEGER NOT NULL DEFAULT 0,
-                cache_creation INTEGER NOT NULL DEFAULT 0
-            )
+            INSERT INTO env (key, value) VALUES ('db_version', '\(version)')
+            ON CONFLICT(key) DO UPDATE SET value = '\(version)'
             """)
     }
 
-    /// Adds the `source` column if it doesn't exist yet (migration for pre-v0.2 databases).
-    private func migrateAddSourceColumn() {
-        guard let db else { return }
-        var stmt: OpaquePointer?
-        let sql = "PRAGMA table_info(file_scores)"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+    /// Runs all pending migrations from the current version up to `currentVersion`.
+    private func runMigrations() {
+        let startVersion = getDBVersion()
+        let startTime = CFAbsoluteTimeGetCurrent()
+        Log.app.info("Database version: \(startVersion), target: \(Self.currentVersion)")
 
-        var hasSource = false
+        if startVersion >= Self.currentVersion {
+            Log.app.info("Database schema up to date (v\(startVersion))")
+            return
+        }
+
+        // Ensure the env table exists before any migration runs
+        if startVersion == 0 {
+            exec("""
+                CREATE TABLE IF NOT EXISTS env (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """)
+        }
+
+        // Detect pre-migration databases that already have tables but no version tracking
+        let isLegacy = startVersion == 0 && tableExists("file_scores")
+        if isLegacy {
+            Log.app.notice("Detected legacy database without version tracking — running upgrade migrations")
+        }
+
+        for version in (startVersion + 1)...Self.currentVersion {
+            Log.app.notice("Running migration to v\(version)...")
+            runMigration(version, isLegacy: isLegacy)
+            setDBVersion(version)
+            Log.app.notice("Migration to v\(version) complete")
+        }
+
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        Log.app.notice("All migrations complete (v\(startVersion) → v\(Self.currentVersion)) in \(String(format: "%.1f", elapsed * 1000))ms")
+    }
+
+    /// Executes a single migration step. Each version number corresponds to a schema change.
+    private func runMigration(_ version: Int, isLegacy: Bool) {
+        switch version {
+
+        // v1: base file_scores table
+        case 1:
+            exec("""
+                CREATE TABLE IF NOT EXISTS file_scores (
+                    path           TEXT PRIMARY KEY,
+                    file_size      INTEGER NOT NULL,
+                    modified_at    INTEGER NOT NULL,
+                    scanned_at     INTEGER NOT NULL,
+                    input_tokens   INTEGER NOT NULL DEFAULT 0,
+                    output_tokens  INTEGER NOT NULL DEFAULT 0,
+                    cache_read     INTEGER NOT NULL DEFAULT 0,
+                    cache_creation INTEGER NOT NULL DEFAULT 0
+                )
+                """)
+
+        // v2: add source column to file_scores
+        case 2:
+            if !isLegacy || !columnExists("file_scores", column: "source") {
+                exec("ALTER TABLE file_scores ADD COLUMN source TEXT NOT NULL DEFAULT 'claude'")
+            }
+
+        // v3: daily_snapshots table
+        case 3:
+            exec("""
+                CREATE TABLE IF NOT EXISTS daily_snapshots (
+                    date           TEXT PRIMARY KEY,
+                    input_tokens   INTEGER NOT NULL DEFAULT 0,
+                    output_tokens  INTEGER NOT NULL DEFAULT 0,
+                    cache_read     INTEGER NOT NULL DEFAULT 0,
+                    cache_creation INTEGER NOT NULL DEFAULT 0
+                )
+                """)
+
+        default:
+            Log.app.error("Unknown migration version \(version) — skipping")
+        }
+    }
+
+    /// Checks whether a table exists in the database.
+    private func tableExists(_ name: String) -> Bool {
+        guard let db else { return false }
+        var stmt: OpaquePointer?
+        let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    /// Checks whether a column exists in a given table.
+    private func columnExists(_ table: String, column: String) -> Bool {
+        guard let db else { return false }
+        var stmt: OpaquePointer?
+        let sql = "PRAGMA table_info(\(table))"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
         while sqlite3_step(stmt) == SQLITE_ROW {
-            if let namePtr = sqlite3_column_text(stmt, 1) {
-                let name = String(cString: namePtr)
-                if name == "source" {
-                    hasSource = true
-                    break
-                }
+            if let namePtr = sqlite3_column_text(stmt, 1),
+               String(cString: namePtr) == column {
+                return true
             }
         }
-
-        if !hasSource {
-            exec("ALTER TABLE file_scores ADD COLUMN source TEXT NOT NULL DEFAULT 'claude'")
-            Log.app.notice("Migrated file_scores: added source column")
-        }
+        return false
     }
 
     private func exec(_ sql: String) {
