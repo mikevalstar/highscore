@@ -1,6 +1,6 @@
 # HighScore
 
-A native macOS menubar app that tracks your AI token usage and displays it as a retro seven-segment score counter. Currently reads from Claude Code; will eventually become an idle RPG powered by your AI usage.
+A native macOS menubar app that tracks your AI token usage and displays it as a retro seven-segment score counter. It reads local usage data from Claude Code, Codex, OpenCode, Copilot CLI, and Cursor, then turns that into one combined score.
 
 ## Requirements
 
@@ -18,7 +18,8 @@ Look for the trophy icon in your menubar. Click it to see your score.
 
 ## What It Does
 
-- Reads Claude Code conversation files from `~/.claude/projects/` and totals up all token usage (input, output, cache read, cache creation)
+- Reads local token usage from Claude Code, Codex, OpenCode, Copilot CLI, and Cursor
+- Uses the most complete source available per tool and avoids double counting overlapping session totals
 - Displays the running total in a retro seven-segment display that ticks up in real-time when AI is active
 - Optional always-on-top overlay HUD (toggle from the menubar, configure position/size/opacity in Settings)
 - Persists scores in a local SQLite database (`~/Library/Application Support/HighScore/scores.db`) so startup is instant and deleted conversation files keep their scores

@@ -3,14 +3,21 @@ import Foundation
 /// Reads GitHub Copilot CLI token usage from session event JSONL files.
 ///
 /// Copilot CLI stores sessions at `~/.copilot/session-state/<uuid>/events.jsonl`.
-/// Each file contains an event stream; `assistant.message` events carry an
-/// `outputTokens` count:
+/// Each file contains an event stream. The canonical per-session totals live in
+/// the final `session.shutdown` event under `data.modelMetrics.*.usage`:
 /// ```json
-/// { "type": "assistant.message", "data": { "outputTokens": N, ... } }
+/// { "type": "session.shutdown", "data": { "modelMetrics": {
+///     "claude-sonnet-4.6": { "usage": {
+///         "inputTokens": N, "outputTokens": N,
+///         "cacheReadTokens": N, "cacheWriteTokens": N,
+///         "reasoningTokens": N
+///     }}
+/// }}}
 /// ```
 ///
-/// We sum all `outputTokens` values per file for the session's total output usage.
-/// Input token counts are not available in Copilot CLI's event format.
+/// We use `session.shutdown` totals when available because they already include
+/// the `assistant.message.outputTokens` counts. Falling back to summing message
+/// events is only safe when shutdown totals are missing.
 /// The state DB (path: `copilot:<session-uuid>`) caches results using file size +
 /// mtime for change detection, following the same pattern as other readers.
 final class CopilotReader: TokenReader, Sendable {
@@ -68,7 +75,7 @@ final class CopilotReader: TokenReader, Sendable {
                 skippedFiles += 1
             } else {
                 let oldScore = cached?.score ?? TokenScore()
-                let newScore = parseOutputTokens(from: file)
+                let newScore = parseSessionTotals(from: file)
 
                 db.upsert(
                     path: cachePath,
@@ -82,7 +89,7 @@ final class CopilotReader: TokenReader, Sendable {
                 parsedFiles += 1
 
                 Log.copilot.debug(
-                    "\(sessionId, privacy: .public): out=\(newScore.outputTokens)"
+                    "\(sessionId, privacy: .public): in=\(newScore.inputTokens), out=\(newScore.outputTokens), cacheRead=\(newScore.cacheReadTokens), cacheWrite=\(newScore.cacheCreationTokens), reasoning=\(newScore.reasoningTokens)"
                 )
             }
         }
@@ -95,7 +102,7 @@ final class CopilotReader: TokenReader, Sendable {
             "Scan complete: \(totalFiles) files, \(parsedFiles) parsed, \(skippedFiles) cached, \(elapsedStr, privacy: .public)ms elapsed"
         )
         Log.copilot.notice(
-            "Totals — out: \(finalScore.outputTokens)"
+            "Totals — in: \(finalScore.inputTokens), out: \(finalScore.outputTokens), cacheRead: \(finalScore.cacheReadTokens), cacheWrite: \(finalScore.cacheCreationTokens), reasoning: \(finalScore.reasoningTokens)"
         )
 
         return finalScore
@@ -140,51 +147,106 @@ final class CopilotReader: TokenReader, Sendable {
         return files
     }
 
-    /// Sums `outputTokens` from all `assistant.message` events in an events.jsonl file.
-    private func parseOutputTokens(from fileURL: URL) -> TokenScore {
+    /// Parses a session's token totals.
+    ///
+    /// We prefer the aggregate `session.shutdown` totals because they already
+    /// include message-level output counts. Summing `assistant.message` outputs
+    /// on top of shutdown totals would double count output tokens.
+    private func parseSessionTotals(from fileURL: URL) -> TokenScore {
         guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
             Log.copilot.warning("Failed to read file: \(fileURL.lastPathComponent)")
             return TokenScore()
         }
 
-        var totalOutput = 0
+        var shutdownScore: TokenScore?
+        var fallbackOutput = 0
         var linesProcessed = 0
+        var shutdownEvents = 0
+        var messageEvents = 0
 
         content.enumerateLines { line, _ in
             guard !line.isEmpty else { return }
             linesProcessed += 1
 
-            // Fast pre-filter: skip lines that can't contain output token data
-            guard line.contains("outputTokens") else { return }
+            // Fast pre-filter: skip lines that can't contain token data we use.
+            guard line.contains("session.shutdown") || line.contains("outputTokens") else { return }
 
             guard let lineData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
                 return
             }
 
-            // assistant.message events contain outputTokens in data:
-            // { "type": "assistant.message", "data": { "outputTokens": N, ... } }
-            guard let type = json["type"] as? String, type == "assistant.message",
-                  let data = json["data"] as? [String: Any],
-                  let outputTokens = data["outputTokens"] as? Int else {
+            guard let type = json["type"] as? String,
+                  let data = json["data"] as? [String: Any] else {
                 return
             }
 
-            totalOutput += outputTokens
+            switch type {
+            case "session.shutdown":
+                shutdownEvents += 1
+                if let modelMetrics = data["modelMetrics"] as? [String: Any] {
+                    shutdownScore = self.sumModelMetrics(modelMetrics)
+                }
+            case "assistant.message":
+                if let outputTokens = self.intValue(data["outputTokens"]) {
+                    fallbackOutput += outputTokens
+                    messageEvents += 1
+                }
+            default:
+                break
+            }
         }
 
-        let score = TokenScore(
-            inputTokens: 0,
-            outputTokens: totalOutput,
-            cacheReadTokens: 0,
-            cacheCreationTokens: 0,
-            reasoningTokens: 0
-        )
+        if let shutdownScore {
+            Log.copilot.debug(
+                "\(fileURL.deletingLastPathComponent().lastPathComponent, privacy: .public): \(linesProcessed) lines, \(shutdownEvents) shutdown events, using aggregate totals"
+            )
+            return shutdownScore
+        }
+
+        let score = TokenScore(outputTokens: fallbackOutput)
 
         Log.copilot.debug(
-            "\(fileURL.deletingLastPathComponent().lastPathComponent, privacy: .public): \(linesProcessed) lines, out=\(totalOutput)"
+            "\(fileURL.deletingLastPathComponent().lastPathComponent, privacy: .public): \(linesProcessed) lines, no shutdown totals, fell back to \(messageEvents) assistant.message events"
         )
 
         return score
+    }
+
+    /// Sums usage across all models recorded in the shutdown event.
+    private func sumModelMetrics(_ modelMetrics: [String: Any]) -> TokenScore {
+        var total = TokenScore()
+
+        for metricValue in modelMetrics.values {
+            guard let metric = metricValue as? [String: Any],
+                  let usage = metric["usage"] as? [String: Any] else {
+                continue
+            }
+
+            total = total.adding(TokenScore(
+                inputTokens: intValue(usage["inputTokens"]) ?? 0,
+                outputTokens: intValue(usage["outputTokens"]) ?? 0,
+                cacheReadTokens: intValue(usage["cacheReadTokens"]) ?? 0,
+                cacheCreationTokens: intValue(usage["cacheWriteTokens"]) ?? 0,
+                reasoningTokens: intValue(usage["reasoningTokens"]) ?? 0
+            ))
+        }
+
+        return total
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        switch value {
+        case let int as Int:
+            return int
+        case let int64 as Int64:
+            return Int(int64)
+        case let double as Double:
+            return Int(double)
+        case let number as NSNumber:
+            return number.intValue
+        default:
+            return nil
+        }
     }
 }

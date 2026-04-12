@@ -20,6 +20,8 @@ import SQLite3
 ///
 /// **Note**: Cursor's basic chat mode may record 0 tokens in bubbles — only
 /// agent/composer workflows reliably populate token counts.
+/// To avoid double counting, each composer uses exactly one representation:
+/// bubble totals when available, otherwise inline conversation data.
 ///
 /// Per-conversation totals are cached in the shared `ScoreDatabase` with
 /// path `cursor:<composerId>`. Change detection uses `lastUpdatedAt`.
@@ -147,7 +149,9 @@ final class CursorReader: TokenReader, Sendable {
 
             let oldScore = cached?.score ?? TokenScore()
 
-            // Try new format first (v14+): token data in separate bubbleId entries
+            // Use one representation per composer to avoid double counting.
+            // Newer Cursor builds store totals on bubble rows; older builds keep
+            // the conversation inline on the composerData record.
             let hasHeaders = (json["fullConversationHeadersOnly"] as? [[String: Any]])?.isEmpty == false
             let hasInlineConv = (json["conversation"] as? [[String: Any]])?.isEmpty == false
 

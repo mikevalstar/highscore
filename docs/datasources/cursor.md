@@ -1,128 +1,77 @@
 # Cursor Data Source
 
 ## File Location
-```
+```text
 ~/Library/Application Support/Cursor/User/globalStorage/state.vscdb
 ```
 
 ## Database Type
 SQLite
 
-## Database Size
-~77 MB
-
-## Schema Overview
+## Relevant Table
 
 | Table | Purpose |
 |-------|---------|
-| `ItemTable` | VS Code/Cursor settings (UI state, telemetry, preferences) |
-| `cursorDiskKV` | Main Cursor state (conversations, code edits, context) |
+| `cursorDiskKV` | Composer metadata and message bubble state |
 
-## Key Patterns in `cursorDiskKV`
+## Key Patterns
 
-| Key Pattern | Count | Purpose |
-|-------------|-------|---------|
-| `composerData:<uuid>` | 196 | Chat conversations/composers |
-| `bubbleId:<composer>:<bubble>` | 2,334 | Individual message bubbles |
-| `checkpointId:<uuid>` | - | Code checkpoint data |
-| `codeBlockDiff:<uuid>` | - | Code block diffs |
-| `agentKv:<key>` | - | Agent key-value data |
-| `messageRequestContext:<uuid>` | - | Request context |
-| `ofsContent:<uuid>` | - | Content data |
+| Key Pattern | Purpose |
+|-------------|---------|
+| `composerData:<uuid>` | Composer metadata and, on older formats, inline conversation data |
+| `bubbleId:<composerId>:<bubbleId>` | Per-message bubble payloads, including `tokenCount` on newer formats |
 
-## Data Structure
+## Observed Shapes
 
-### Token Fields Found
+In the sampled database on 2026-04-12:
+- `composerData:*`: 196
+- `bubbleId:*`: 2,334
+- Inline conversation composers: 56
+- Header-only composers: 69
+- Metadata-only composers: 67
+- Bubble rows with `tokenCount`: 2,264
+- Bubble rows with non-zero `tokenCount`: 110
 
-| Field | Location | Type | Description |
-|-------|----------|------|-------------|
-| `inputTokens` | `tokenCount.inputTokens` | Int | Input tokens |
-| `outputTokens` | `tokenCount.outputTokens` | Int | Output tokens |
-| `tokenCountUpUntilHere` | `tokenCountUpUntilHere` | - | Cumulative token count |
-| `tokenDetailsUpUntilHere` | `tokenDetailsUpUntilHere` | - | Per-file breakdown |
-
-### Fields NOT Found
-
-- `cache_read_input_tokens` - **NOT STORED**
-- `cache_creation_input_tokens` - **NOT STORED**
-- `input_tokens` at top level
-- `output_tokens` at top level
-- `reasoning_tokens` - **NOT STORED**
-
-### Composer Data Example
-```json
-{
-  "type": 2,
-  "tokenCount": {
-    "inputTokens": 11286,
-    "outputTokens": 1650
-  },
-  "text": "I've made several improvements to the styling..."
-}
-```
-
-## Statistics
-
-| Metric | Value |
-|--------|-------|
-| Total conversation items | 828 |
-| Items with `tokenCount` field | 197 (23.8%) |
-| Items with **non-zero** tokens | 27 (**3.3%**) |
-| Items with `tokenDetailsUpUntilHere` | 135 (16.3%) |
-
-## Sample Non-Zero Token Data
-
-| inputTokens | outputTokens | Use Case |
-|-------------|--------------|----------|
-| 11,286 | 1,650 | Slack bot memory functionality |
-| 11,135 | 2,289 | Creating a TODO list page |
-| 9,986 | 2,080 | Creating core-memory API endpoint |
-| 6,399 | 2,036 | Logging configuration changes |
-| 4,641 | 1,419 | Server logging with pino |
-
-## Data Completeness
-
-| Token Type | Available | Notes |
-|------------|-----------|-------|
-| Input Tokens | ⚠️ Partial | Only in composerData, sparse (3.3% non-zero) |
-| Output Tokens | ⚠️ Partial | Only in composerData, sparse (3.3% non-zero) |
-| Cache Read Tokens | ❌ No | Not stored by Cursor |
-| Cache Creation Tokens | ❌ No | Not stored by Cursor |
-| Reasoning Tokens | ❌ No | Not stored by Cursor |
-
-## Data Quality Assessment
-
-**Overall: POOR - Not viable for comprehensive token tracking**
-
-### Critical Limitations
-
-1. **97% of tokenCount values are zero** - Most messages have no token data
-2. **No prompt caching tracking** - Cache token fields completely absent
-3. **`usageData` only tracks cost** - Contains `costInCents` but no token breakdown
-4. **Cannot calculate accurate ratios** - Too sparse to be meaningful
-5. **Agent/composer mode only** - Chat mode records 0 tokens
-
-### Notes
-
-- Only agent/composer mode populates token counts - chat mode records 0
-- Older format stored inline `conversation` array with context `tokenCount`
-- Token counts may only be present for certain interaction types
+The important part is that inline conversations and header-only composers were observed as separate shapes, not mixed on the same composer.
 
 ## Parsing Strategy
 
-- Query `cursorDiskKV` for `composerData:*` keys
-- Parse `tokenCount.inputTokens` and `tokenCount.outputTokens`
-- Filter out zero values
-- **Do not rely on this as primary data source** - data is too sparse
+Use one representation per composer:
+
+1. If the composer is header-only, sum `tokenCount.inputTokens` and `tokenCount.outputTokens` from matching `bubbleId:` rows
+2. Otherwise, use inline conversation data from `composerData:`
+3. Never combine both for the same composer
+
+This avoids double counting the same Cursor conversation.
+
+## Available Fields
+
+| Field | Location | Notes |
+|-------|----------|-------|
+| `tokenCount.inputTokens` | Bubble rows, sometimes inline conversation | Partial coverage |
+| `tokenCount.outputTokens` | Bubble rows, sometimes inline conversation | Partial coverage |
+| `tokenCountUpUntilHere` | Some bubble rows | Too sparse to use as primary total |
+
+## Missing Fields
+
+- Cache read tokens
+- Cache creation tokens
+- Reasoning tokens
+
+These do not appear to be stored in Cursor's local state database.
+
+## Data Quality Assessment
+
+Cursor remains a best-effort source only:
+- Many rows still report zero tokens
+- Basic chat flows appear much less complete than agent/composer flows
+- Missing cache and reasoning fields prevent full parity with other readers
 
 ## Recommendation
 
-The Cursor `state.vscdb` database is **not a viable source** for comprehensive token usage tracking due to:
-- Extreme sparsity (97% zero)
-- No cache token tracking
-- No reasoning token tracking
-
-Use Claude Code JSONL files as the primary reliable method for token tracking.
+Keep Cursor support, but treat it as partial:
+- useful for some agent/composer workflows
+- not reliable enough to be the user's only tracked source
 
 ## Last Updated
 2026-04-12
