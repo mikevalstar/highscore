@@ -11,4 +11,5 @@ enum Log {
     static let opencode = Logger(subsystem: "com.highscore.app", category: "opencode")
     static let codex = Logger(subsystem: "com.highscore.app", category: "codex")
     static let copilot = Logger(subsystem: "com.highscore.app", category: "copilot")
+    static let cursor = Logger(subsystem: "com.highscore.app", category: "cursor")
 }

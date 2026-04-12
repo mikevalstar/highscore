@@ -23,7 +23,7 @@ A native macOS menubar app that tracks your AI token usage across tools and turn
 - [x] OpenCode usage (reads `.opencode/opencode.db` SQLite databases per-project)
 - [x] Reasoning token tracking (supported for Codex and OpenCode sources)
 - [x] Copilot CLI usage (reads `~/.copilot/session-state/<uuid>/events.jsonl` — output tokens only, no input token data available from Copilot)
-- [ ] Cursor usage
+- [x] Cursor usage (reads `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` — context tokens from `tokenCount`, output tokens estimated from assistant text)
 - [ ] User-configurable custom scan folders for any reader type
 
 ## Phase 3 - Idle RPG Mechanics

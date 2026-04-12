@@ -70,3 +70,5 @@ The goal: an AI agent reading the log output should be able to diagnose any issu
 ## Data Source Format
 
 Claude Code JSONL files contain one JSON object per line. Usage data lives at `message.usage` (or top-level `usage`) with fields: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+
+- **Data source (Cursor)**: SQLite DB at `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` — conversation data in `cursorDiskKV` table under `composerData:<uuid>` keys. `tokenCount` provides approximate input/context tokens; output tokens are estimated from assistant message text (~4 chars/token). No exact API-level token counts are stored locally by Cursor.

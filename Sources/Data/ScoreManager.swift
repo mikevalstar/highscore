@@ -73,6 +73,7 @@ class ScoreManager: ObservableObject {
         OpenCodeReader(db: db),
         CodexReader(db: db),
         CopilotReader(db: db),
+        CursorReader(db: db),
     ]
 
     /// Returns the startDate setting as a Unix timestamp in seconds.
