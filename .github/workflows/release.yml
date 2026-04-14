@@ -34,6 +34,12 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_REF_NAME#v}" "$APP/Contents/Info.plist"
 
+      - name: Ad-hoc codesign
+        # Apple Silicon requires at least an ad-hoc signature or the OS refuses
+        # to launch the app, showing a misleading "damaged" error. Sign after
+        # all bundle mutations (Info.plist edits above) so the signature is valid.
+        run: codesign --force --deep --sign - HighScore.app
+
       - name: Create zip
         run: ditto -c -k --keepParent HighScore.app HighScore.zip
 
