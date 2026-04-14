@@ -86,6 +86,11 @@ class AppSettings: ObservableObject {
     /// How often (in seconds) to re-scan files for new token usage.
     @AppStorage("refreshInterval") var refreshInterval: Double = 5
 
+    /// Whether to include cached tokens (cache reads and cache creations) in the
+    /// total score. When off, only input/output/reasoning tokens count toward
+    /// totals and period (daily/weekly) calculations.
+    @AppStorage("includeCachedTokens") var includeCachedTokens: Bool = true
+
     /// Unix timestamp (seconds since 1970) for when to start counting tokens.
     /// Files modified before this date are excluded. Set to 0 means "not yet initialized".
     @AppStorage("startDate") var startDate: Double = 0

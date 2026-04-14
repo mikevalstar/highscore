@@ -77,6 +77,21 @@ struct GeneralSettingsTab: View {
                     .padding(8)
                 }
 
+                GroupBox("Token Counting") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(isOn: $settings.includeCachedTokens) {
+                            Text("Include cached tokens in score")
+                                .font(.system(size: 12, design: .monospaced))
+                        }
+
+                        Text("Counts cache reads and cache creations toward your total, daily, and weekly scores. Turn off to count only input, output, and reasoning tokens.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(8)
+                }
+
                 GroupBox("Score Visibility") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Choose which scores to display in the menubar and overlay.")

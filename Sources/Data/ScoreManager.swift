@@ -20,8 +20,13 @@ struct TokenScore: Sendable {
     var cacheCreationTokens: Int = 0
     var reasoningTokens: Int = 0
 
+    /// Total tokens. Honors the "includeCachedTokens" user setting — when that
+    /// toggle is off, cache read/creation tokens are excluded from the total.
+    /// Setting defaults to on (included) when the key is absent.
     var total: Int {
-        inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens + reasoningTokens
+        let raw = inputTokens + outputTokens + reasoningTokens
+        let includeCached = (UserDefaults.standard.object(forKey: "includeCachedTokens") as? Bool) ?? true
+        return includeCached ? raw + cacheReadTokens + cacheCreationTokens : raw
     }
 
     func adding(_ other: TokenScore) -> TokenScore {
@@ -77,6 +82,7 @@ class ScoreManager: ObservableObject {
     private var startDateObserver: NSObjectProtocol?
     private var lastRefreshInterval: Double = 0
     private var lastStartTimestamp: Int64 = 0
+    private var lastIncludeCachedTokens: Bool = true
 
     /// FSEvents-backed watcher for all reader source directories. Events are
     /// run through a leading-edge throttle (see `handleFileChange`).
@@ -127,6 +133,7 @@ class ScoreManager: ObservableObject {
         // Load cached total from DB immediately so the UI shows a score right away
         let since = startTimestamp
         lastStartTimestamp = since
+        lastIncludeCachedTokens = (UserDefaults.standard.object(forKey: "includeCachedTokens") as? Bool) ?? true
         let cachedTotal = db.totalScore(since: since)
         if cachedTotal.total > 0 {
             combinedScore = cachedTotal
@@ -422,14 +429,22 @@ class ScoreManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 let since = self.startTimestamp
-                guard since != self.lastStartTimestamp else {
-                    Log.scores.debug("UserDefaults changed — startDate unchanged, checking refreshInterval only")
+                let includeCached = (UserDefaults.standard.object(forKey: "includeCachedTokens") as? Bool) ?? true
+                let includeCachedChanged = includeCached != self.lastIncludeCachedTokens
+                let startDateChanged = since != self.lastStartTimestamp
+
+                guard startDateChanged || includeCachedChanged else {
+                    Log.scores.debug("UserDefaults changed — startDate & includeCachedTokens unchanged, checking refreshInterval only")
                     self.restartRefreshTimerIfNeeded()
                     return
                 }
-                self.lastStartTimestamp = since
 
-                // Re-read the cached total with the new filter and force refresh
+                self.lastStartTimestamp = since
+                self.lastIncludeCachedTokens = includeCached
+
+                // Re-read the cached total. The DB breakdown doesn't change, but
+                // `TokenScore.total` now reflects the new filter, so republishing
+                // the struct is enough to drive UI updates.
                 let cachedTotal = self.db.totalScore(since: since)
                 self.combinedScore = cachedTotal
                 self.totalScore = cachedTotal.total
@@ -437,9 +452,11 @@ class ScoreManager: ObservableObject {
                 self.updatePeriodScores(currentTotal: cachedTotal)
                 self.restartRefreshTimerIfNeeded()
                 self.startTickTimerIfNeeded()
-                Log.scores.notice("startDate changed — recalculated cached total: \(cachedTotal.total) (since: \(since))")
+                Log.scores.notice("Settings changed (startDate=\(startDateChanged), includeCached=\(includeCachedChanged, privacy: .public)) — recalculated total: \(cachedTotal.total) (since: \(since), includeCached: \(includeCached))")
                 self.isRefreshing = false
-                self.refresh()
+                if startDateChanged {
+                    self.refresh()
+                }
             }
         }
     }
