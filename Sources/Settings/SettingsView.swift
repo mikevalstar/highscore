@@ -249,25 +249,6 @@ struct GeneralSettingsTab: View {
                     .padding(8)
                 }
 
-                GroupBox("Refresh Rate") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("How often to scan for new token usage.")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-
-                        HStack {
-                            Text("Interval")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 80, alignment: .leading)
-                            Slider(value: $settings.refreshInterval, in: 1...60, step: 1)
-                            Text("\(Int(settings.refreshInterval))s")
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 40, alignment: .trailing)
-                        }
-                    }
-                    .padding(8)
-                }
-
                 Spacer()
             }
             .padding(16)

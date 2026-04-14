@@ -80,9 +80,14 @@ class ScoreManager: ObservableObject {
     private var tickTimer: Timer?
     private var isRefreshing = false
     private var startDateObserver: NSObjectProtocol?
-    private var lastRefreshInterval: Double = 0
     private var lastStartTimestamp: Int64 = 0
     private var lastIncludeCachedTokens: Bool = true
+
+    /// Safety-net polling cadence. FSEvents is the primary change signal — this
+    /// timer only exists to catch events FSEvents can drop (sleep/wake, permission
+    /// hiccups, filesystem edge cases). 5 min is aggressive enough to notice
+    /// dropped updates quickly without meaningfully contributing to idle CPU.
+    private static let safetyNetPollInterval: TimeInterval = 300
 
     /// FSEvents-backed watcher for all reader source directories. Events are
     /// run through a leading-edge throttle (see `handleFileChange`).
@@ -253,22 +258,14 @@ class ScoreManager: ObservableObject {
         }
     }
 
-    /// Returns the refresh interval setting in seconds.
-    /// Note: `@AppStorage` defaults don't apply to raw `UserDefaults.double(forKey:)`,
-    /// which returns 0 when the key is absent. We default to 5s in that case.
-    private var refreshInterval: Double {
-        let raw = UserDefaults.standard.double(forKey: "refreshInterval")
-        return (raw > 0 ? raw : 5).clamped(to: 1...60)
-    }
-
     private func startTimers() {
-        let interval = refreshInterval
-        lastRefreshInterval = interval
-        Log.scores.info("Starting timers: refresh=\(String(format: "%.0f", interval))s, tick=on-demand")
+        let interval = Self.safetyNetPollInterval
+        Log.scores.info("Starting timers: safety-net poll=\(String(format: "%.0f", interval))s, tick=on-demand (FSEvents is primary)")
 
-        // Refresh from disk at the configured interval
+        // Safety-net true-up — FSEvents is the primary change signal.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
+                Log.scores.notice("Safety-net poll firing")
                 self?.refresh()
             }
         }
@@ -279,8 +276,9 @@ class ScoreManager: ObservableObject {
     /// leading-edge throttle — first event fires refresh immediately; further
     /// events inside the window are collapsed into a single trailing refresh.
     ///
-    /// The periodic `refreshTimer` still runs as a safety net to catch anything
-    /// FSEvents drops (sleep/wake, permission hiccups, filesystem edge cases).
+    /// The periodic `refreshTimer` (every `safetyNetPollInterval` seconds) runs
+    /// as a true-up to catch anything FSEvents drops (sleep/wake, permission
+    /// hiccups, filesystem edge cases). FSEvents is the primary change signal.
     private func startFileWatcher() {
         let paths = readers.flatMap(\.watchPaths)
         guard !paths.isEmpty else {
@@ -352,20 +350,6 @@ class ScoreManager: ObservableObject {
         Log.scores.debug("Stopped tick timer (animation complete)")
     }
 
-    /// Restarts the refresh timer if the interval setting changed.
-    private func restartRefreshTimerIfNeeded() {
-        let interval = refreshInterval
-        guard interval != lastRefreshInterval else { return }
-        lastRefreshInterval = interval
-        refreshTimer?.invalidate()
-        Log.scores.info("Refresh interval changed to \(String(format: "%.0f", interval))s — restarting timer")
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.refresh()
-            }
-        }
-    }
-
     private var tickCount: Int = 0
     private var lastTickLog: CFAbsoluteTime = 0
 
@@ -434,8 +418,7 @@ class ScoreManager: ObservableObject {
                 let startDateChanged = since != self.lastStartTimestamp
 
                 guard startDateChanged || includeCachedChanged else {
-                    Log.scores.debug("UserDefaults changed — startDate & includeCachedTokens unchanged, checking refreshInterval only")
-                    self.restartRefreshTimerIfNeeded()
+                    Log.scores.debug("UserDefaults changed — startDate & includeCachedTokens unchanged, ignoring")
                     return
                 }
 
@@ -450,7 +433,6 @@ class ScoreManager: ObservableObject {
                 self.totalScore = cachedTotal.total
                 self.displayScore = cachedTotal.total
                 self.updatePeriodScores(currentTotal: cachedTotal)
-                self.restartRefreshTimerIfNeeded()
                 self.startTickTimerIfNeeded()
                 Log.scores.notice("Settings changed (startDate=\(startDateChanged), includeCached=\(includeCachedChanged, privacy: .public)) — recalculated total: \(cachedTotal.total) (since: \(since), includeCached: \(includeCached))")
                 self.isRefreshing = false

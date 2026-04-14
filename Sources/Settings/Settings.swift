@@ -83,9 +83,6 @@ class AppSettings: ObservableObject {
     /// Which visual style to use for score digits across the app.
     @AppStorage("displayStyle") var displayStyle: ScoreDisplayStyle = .sevenSegment
 
-    /// How often (in seconds) to re-scan files for new token usage.
-    @AppStorage("refreshInterval") var refreshInterval: Double = 5
-
     /// Whether to include cached tokens (cache reads and cache creations) in the
     /// total score. When off, only input/output/reasoning tokens count toward
     /// totals and period (daily/weekly) calculations.
