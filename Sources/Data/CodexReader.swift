@@ -26,6 +26,11 @@ final class CodexReader: TokenReader, Sendable {
         Log.codex.info("CodexReader initialized")
     }
 
+    var watchPaths: [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        return [homeDir.appendingPathComponent(".codex/sessions").path]
+    }
+
     func readUsage(since: Int64 = 0) -> TokenScore {
         let start = CFAbsoluteTimeGetCurrent()
 

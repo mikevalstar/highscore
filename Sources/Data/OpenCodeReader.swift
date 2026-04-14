@@ -23,6 +23,16 @@ final class OpenCodeReader: TokenReader, Sendable {
         Log.opencode.info("OpenCodeReader initialized")
     }
 
+    /// Watch the containing directory, not the DB file — SQLite WAL/SHM sidecar
+    /// files get all the churn during writes while the main .db may not change
+    /// mtime for a while. Directory-level events catch all of them.
+    var watchPaths: [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let xdgDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+            ?? homeDir.appendingPathComponent(".local/share").path
+        return [(xdgDataHome as NSString).appendingPathComponent("opencode")]
+    }
+
     func readUsage(since: Int64 = 0) -> TokenScore {
         let start = CFAbsoluteTimeGetCurrent()
 

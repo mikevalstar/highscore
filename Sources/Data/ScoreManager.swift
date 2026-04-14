@@ -78,6 +78,16 @@ class ScoreManager: ObservableObject {
     private var lastRefreshInterval: Double = 0
     private var lastStartTimestamp: Int64 = 0
 
+    /// FSEvents-backed watcher for all reader source directories. Events are
+    /// run through a leading-edge throttle (see `handleFileChange`).
+    private var fileWatcher: FileWatcher?
+    /// Throttle window. The first event fires a refresh immediately; any events
+    /// arriving during the window are suppressed but remembered, and if at least
+    /// one arrived, a single trailing refresh fires when the window closes.
+    private let fileChangeThrottle: TimeInterval = 5.0
+    private var lastFileTriggeredRefresh: Date?
+    private var trailingRefreshScheduled: Bool = false
+
     private let db = ScoreDatabase()
     private lazy var readers: [TokenReader] = [
         ClaudeCodeReader(db: db),
@@ -129,6 +139,7 @@ class ScoreManager: ObservableObject {
 
         refresh()
         startTimers()
+        startFileWatcher()
         observeStartDateChanges()
     }
 
@@ -256,6 +267,64 @@ class ScoreManager: ObservableObject {
         }
     }
 
+    /// Starts an FSEvents-backed watcher across every reader's declared source
+    /// directories. File events feed `handleFileChange`, which implements a
+    /// leading-edge throttle — first event fires refresh immediately; further
+    /// events inside the window are collapsed into a single trailing refresh.
+    ///
+    /// The periodic `refreshTimer` still runs as a safety net to catch anything
+    /// FSEvents drops (sleep/wake, permission hiccups, filesystem edge cases).
+    private func startFileWatcher() {
+        let paths = readers.flatMap(\.watchPaths)
+        guard !paths.isEmpty else {
+            Log.scores.info("No reader declared watchPaths — file watching disabled, polling only")
+            return
+        }
+
+        Log.scores.info("Wiring file watcher across \(paths.count) reader path(s), throttle=\(String(format: "%.1f", self.fileChangeThrottle))s leading-edge")
+        fileWatcher = FileWatcher(paths: paths, latency: 0.5) { [weak self] in
+            // Fires on watcher's utility queue; hop to main for state mutation.
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleFileChange()
+            }
+        }
+        fileWatcher?.start()
+    }
+
+    /// Leading-edge throttle. The first event in a quiet period fires refresh
+    /// immediately so the UI reacts without waiting. Subsequent events inside
+    /// the `fileChangeThrottle` window are suppressed but remembered — one
+    /// trailing refresh fires at the end of the window to catch anything that
+    /// arrived after the initial fire but before the throttle expired.
+    private func handleFileChange() {
+        let now = Date()
+
+        if let last = lastFileTriggeredRefresh,
+           now.timeIntervalSince(last) < fileChangeThrottle {
+            // Inside the throttle window — schedule a single trailing refresh.
+            if trailingRefreshScheduled {
+                Log.scores.debug("File event in throttle window — trailing refresh already scheduled")
+                return
+            }
+            trailingRefreshScheduled = true
+            let remaining = fileChangeThrottle - now.timeIntervalSince(last)
+            Log.scores.debug("File event in throttle window — scheduling trailing refresh in \(String(format: "%.2f", remaining))s")
+            DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
+                guard let self else { return }
+                self.trailingRefreshScheduled = false
+                self.lastFileTriggeredRefresh = Date()
+                Log.scores.notice("Trailing refresh firing (throttle window closed)")
+                self.refresh()
+            }
+        } else {
+            // Leading edge — fire immediately.
+            lastFileTriggeredRefresh = now
+            Log.scores.notice("Leading-edge refresh on file change")
+            refresh()
+        }
+    }
+
     /// Starts the 30fps tick timer if not already running. The timer stops itself
     /// once all display scores reach their targets, so it only consumes CPU while
     /// an animation is in progress.
@@ -378,6 +447,7 @@ class ScoreManager: ObservableObject {
     deinit {
         refreshTimer?.invalidate()
         tickTimer?.invalidate()
+        fileWatcher?.stop()
         if let startDateObserver {
             NotificationCenter.default.removeObserver(startDateObserver)
         }

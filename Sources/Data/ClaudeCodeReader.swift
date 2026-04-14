@@ -13,6 +13,11 @@ final class ClaudeCodeReader: TokenReader, Sendable {
         self.db = db
     }
 
+    var watchPaths: [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        return [homeDir.appendingPathComponent(".claude/projects").path]
+    }
+
     /// Reads usage, only parsing files that have changed since last scan.
     /// Files with mtime before `since` (Unix timestamp) are skipped entirely.
     /// On a warm start (DB populated), this returns near-instantly.

@@ -13,4 +13,5 @@ enum Log {
     static let copilot = Logger(subsystem: "org.mikevalstar.highscore", category: "copilot")
     static let cursor = Logger(subsystem: "org.mikevalstar.highscore", category: "cursor")
     static let rpg = Logger(subsystem: "org.mikevalstar.highscore", category: "rpg")
+    static let watcher = Logger(subsystem: "org.mikevalstar.highscore", category: "watcher")
 }

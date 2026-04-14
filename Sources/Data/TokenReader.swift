@@ -16,4 +16,15 @@ protocol TokenReader: Sendable {
     /// - Parameter since: Unix timestamp (seconds). Sources modified before this are skipped.
     /// - Returns: Accumulated token score across all sessions/files for this tool.
     func readUsage(since: Int64) -> TokenScore
+
+    /// Filesystem paths that, when changed, should trigger a refresh for this reader.
+    ///
+    /// Typically the root directory where this tool stores its data. Watched
+    /// recursively via FSEvents. Non-existent paths are filtered by the watcher.
+    /// Default implementation returns an empty array (opt-in).
+    var watchPaths: [String] { get }
+}
+
+extension TokenReader {
+    var watchPaths: [String] { [] }
 }

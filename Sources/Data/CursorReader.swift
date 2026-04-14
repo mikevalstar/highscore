@@ -35,6 +35,16 @@ final class CursorReader: TokenReader, Sendable {
         Log.cursor.info("CursorReader initialized")
     }
 
+    /// Watch the containing directory — SQLite WAL/SHM sidecars churn on writes
+    /// while the main state.vscdb mtime may lag.
+    var watchPaths: [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let dir = homeDir
+            .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage")
+            .path
+        return [dir]
+    }
+
     func readUsage(since: Int64 = 0) -> TokenScore {
         let start = CFAbsoluteTimeGetCurrent()
 

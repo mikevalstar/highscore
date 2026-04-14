@@ -30,6 +30,11 @@ final class CopilotReader: TokenReader, Sendable {
         Log.copilot.info("CopilotReader initialized")
     }
 
+    var watchPaths: [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        return [homeDir.appendingPathComponent(".copilot/session-state").path]
+    }
+
     func readUsage(since: Int64 = 0) -> TokenScore {
         let start = CFAbsoluteTimeGetCurrent()
 
