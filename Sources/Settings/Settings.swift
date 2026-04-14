@@ -59,6 +59,9 @@ class AppSettings: ObservableObject {
     /// Opacity for the RPG panel (independent from scores)
     @AppStorage("overlayRPGOpacity") var overlayRPGOpacity: Double = 0.85
 
+    /// Show floating "+XP" popups above the overlay when new usage is detected
+    @AppStorage("showXPPopups") var showXPPopups: Bool = false
+
     /// Which panel to show in the menubar popover: "scores", "rpg", or "both"
     @AppStorage("displayMode") var displayMode: String = "scores"
 

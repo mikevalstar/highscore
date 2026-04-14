@@ -526,13 +526,25 @@ struct BetaSettingsTab: View {
                     .padding(8)
                 }
 
+                GroupBox("XP Popups") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Show floating \"+XP\" numbers above the overlay when new token usage is detected.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+
+                        Toggle(isOn: $settings.showXPPopups) {
+                            Text("Show XP popups")
+                                .font(.system(size: 12, design: .monospaced))
+                        }
+                    }
+                    .padding(8)
+                }
+
                 GroupBox("Coming Soon") {
                     VStack(alignment: .leading, spacing: 8) {
                         UpcomingFeatureRow(icon: "chart.line.uptrend.xyaxis", title: "Usage Graphs", description: "Visualize your token usage over time")
                         Divider()
                         UpcomingFeatureRow(icon: "star.fill", title: "Achievements", description: "Unlock milestones as you accumulate tokens")
-                        Divider()
-                        UpcomingFeatureRow(icon: "arrow.up.circle.fill", title: "XP Popups", description: "Floating +tokens numbers when new usage is detected")
                     }
                     .padding(8)
                 }

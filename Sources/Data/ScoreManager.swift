@@ -8,6 +8,11 @@ private extension Double {
     }
 }
 
+struct XPGain: Equatable, Sendable {
+    let amount: Int
+    let id: Int
+}
+
 struct TokenScore: Sendable {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
@@ -60,6 +65,11 @@ class ScoreManager: ObservableObject {
     /// This week's token usage (current total minus start-of-week snapshot)
     @Published var weekScore: Int = 0
     @Published var displayWeekScore: Int = 0
+
+    /// Emitted when a refresh detects a score increase — used for XP popup display
+    @Published var lastXPGain: XPGain?
+    private var xpGainCounter: Int = 0
+    private var hasCompletedFirstRefresh: Bool = false
 
     private var refreshTimer: Timer?
     private var tickTimer: Timer?
@@ -159,9 +169,17 @@ class ScoreManager: ObservableObject {
 
                 // Only publish changes to avoid unnecessary SwiftUI redraws
                 if finalScore.total != oldTotal {
+                    let delta = finalScore.total - oldTotal
                     self.combinedScore = finalScore
                     self.totalScore = finalScore.total
-                    Log.scores.notice("Score updated: \(oldTotal) → \(finalScore.total) (delta: \(finalScore.total - oldTotal))")
+                    Log.scores.notice("Score updated: \(oldTotal) → \(finalScore.total) (delta: \(delta))")
+                    if delta > 0 && self.hasCompletedFirstRefresh {
+                        self.xpGainCounter += 1
+                        self.lastXPGain = XPGain(amount: delta, id: self.xpGainCounter)
+                        Log.scores.notice("XP gain emitted: +\(delta) (id: \(self.xpGainCounter))")
+                    } else if !self.hasCompletedFirstRefresh {
+                        Log.scores.notice("Skipping XP popup for initial catch-up (delta: \(delta))")
+                    }
                     self.startTickTimerIfNeeded()
                 } else {
                     Log.scores.notice("Score unchanged at \(finalScore.total)")
@@ -175,6 +193,7 @@ class ScoreManager: ObservableObject {
                     self.readerScores = finalPerReader
                 }
 
+                self.hasCompletedFirstRefresh = true
                 self.updatePeriodScores(currentTotal: finalScore)
             }
         }

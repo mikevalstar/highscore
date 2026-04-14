@@ -132,7 +132,8 @@ class OverlayWindowController: ObservableObject {
 
         let scoreWidth = scorePanelBaseWidth()
         let rpgWidth: CGFloat = scoreWidth * 2.5  // RPG is 2.5x wider than scores
-        let scoreHeight: CGFloat = 120
+        let xpExtra: CGFloat = settings.showXPPopups ? 48 : 0
+        let scoreHeight: CGFloat = 120 + xpExtra
         let rpgHeight: CGFloat = 300
         let panelGap: CGFloat = 16
 
@@ -220,6 +221,15 @@ struct OverlayContentView: View {
 
     private var scorePanel: some View {
         VStack(spacing: 2) {
+            if settings.showXPPopups {
+                XPPopupView(
+                    xpGain: scoreManager.lastXPGain,
+                    color: settings.scoreColor,
+                    scale: settings.overlayScale
+                )
+                .frame(height: 32 * settings.overlayScale)
+            }
+
             ScoreDisplay(
                 score: scoreManager.displayScore,
                 color: settings.scoreColor,
@@ -264,7 +274,7 @@ struct OverlayContentView: View {
                 .foregroundStyle(settings.scoreColor.opacity(0.6))
                 .opacity(settings.overlayScoreOpacity)
         }
-        .frame(width: scorePanelWidth, height: (settings.showDailyScore || settings.showWeeklyScore ? 120 : 90) * settings.overlayScale)
+        .frame(width: scorePanelWidth, height: ((settings.showDailyScore || settings.showWeeklyScore ? 120 : 90) + (settings.showXPPopups ? 32 : 0)) * settings.overlayScale)
     }
 
     private var rpgPanel: some View {
@@ -281,5 +291,56 @@ struct OverlayContentView: View {
             today: scoreManager.displayTodayScore,
             week: scoreManager.displayWeekScore
         ) * settings.overlayScale
+    }
+}
+
+// MARK: - XP Popup
+
+struct XPPopupView: View {
+    let xpGain: XPGain?
+    let color: Color
+    let scale: CGFloat
+
+    @State private var displayedGain: XPGain?
+    @State private var animateOut: Bool = false
+
+    var body: some View {
+        ZStack {
+            if let gain = displayedGain {
+                Text("+\(formatCompact(gain.amount))")
+                    .font(.system(size: 24 * scale, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(color)
+                    .shadow(color: color.opacity(0.9), radius: 6)
+                    .shadow(color: color.opacity(0.5), radius: 12)
+                    .shadow(color: .black, radius: 2)
+                    .offset(y: animateOut ? -16 * scale : 0)
+                    .opacity(animateOut ? 0 : 1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 30 * scale)
+        .allowsHitTesting(false)
+        .onChange(of: xpGain) { _, newGain in
+            guard let newGain, newGain.amount > 0 else { return }
+            Log.overlay.notice("XP popup triggered: +\(newGain.amount) (id: \(newGain.id))")
+
+            // Reset state for new popup
+            animateOut = false
+            displayedGain = newGain
+
+            // Hold visible for 2s, then fade out over 2s
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                withAnimation(.easeOut(duration: 2.0)) {
+                    animateOut = true
+                }
+            }
+
+            // Clean up after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
+                if displayedGain?.id == newGain.id {
+                    displayedGain = nil
+                    animateOut = false
+                }
+            }
+        }
     }
 }
